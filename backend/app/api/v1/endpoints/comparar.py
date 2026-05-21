@@ -38,31 +38,26 @@ def _por_tipo(proposicoes: list) -> Dict[str, int]:
 
 
 async def _get_deputado_data(dep_id: int) -> Dict[str, Any]:
-    detail, proposicoes, despesas = await asyncio.gather(
-        get_deputado_detail(dep_id),
+    # Detail primeiro — nome é necessário para buscar patrimônio no TSE
+    try:
+        detail = await get_deputado_detail(dep_id)
+    except Exception as exc:
+        raise HTTPException(status_code=404, detail=f"Deputado {dep_id} não encontrado") from exc
+
+    # Proposições, despesas e patrimônio em paralelo
+    proposicoes, despesas, patrimonio = await asyncio.gather(
         get_deputado_proposicoes(dep_id),
         get_deputado_despesas(dep_id),
+        get_patrimonio_deputado_federal(detail.nome, detail.nome_civil or ""),
         return_exceptions=True,
     )
 
-    if isinstance(detail, Exception):
-        raise HTTPException(status_code=404, detail=f"Deputado {dep_id} não encontrado")
-
     proposicoes = proposicoes if isinstance(proposicoes, list) else []
     despesas = despesas if isinstance(despesas, list) else []
+    patrimonio = patrimonio if isinstance(patrimonio, dict) else {}
 
     gastos_total = sum(d.valor_liquido for d in despesas if d.valor_liquido > 0)
-
-    try:
-        patrimonio = await get_patrimonio_deputado_federal(
-            detail.nome, detail.nome_civil or ""
-        )
-    except Exception:
-        patrimonio = {}
-
-    patrimonio_total = (
-        patrimonio.get("total", 0.0) if isinstance(patrimonio, dict) else 0.0
-    )
+    patrimonio_total = patrimonio.get("total", 0.0)
 
     return {
         "id": detail.id,

@@ -1,20 +1,28 @@
 import type { Activity, CompararResult, Deputado, DeputadoDetail, DeputadoDespesa, DeputadoEstadual, DeputadoVotacao, Partido, PartidoGastos, PartidoLideranca, PartidoVotacoesStats, Patrimonio, Proposicao, Senador, Votacao, VotacaoVotos } from "../types";
 
 
-const BASE_URL = `http://${window.location.hostname}:8000/api/v1`;
+const BASE_URL = `/api/v1`;
 
-async function fetchJSON<T>(path: string): Promise<T> {
-  const response = await fetch(`${BASE_URL}${path}`);
+async function fetchJSON<T>(path: string, timeoutMs = 30_000): Promise<T> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
 
-  if (response.status === 503) {
-    throw new Error("offline");
+  try {
+    const response = await fetch(`${BASE_URL}${path}`, { signal: controller.signal });
+
+    if (response.status === 503) throw new Error("offline");
+    if (response.status === 404) throw new Error("not_found");
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+
+    return response.json() as Promise<T>;
+  } catch (err) {
+    if (err instanceof DOMException && err.name === "AbortError") {
+      throw new Error("timeout");
+    }
+    throw err;
+  } finally {
+    clearTimeout(timer);
   }
-
-  if (!response.ok) {
-    throw new Error(`HTTP ${response.status}`);
-  }
-
-  return response.json() as Promise<T>;
 }
 
 export const api = {
@@ -68,14 +76,14 @@ export const api = {
   },
   patrimonio: {
     deputadoFederal: (nome: string, nomeCivil = "") =>
-      fetchJSON<Patrimonio>(`/patrimonio/deputado-federal?nome=${encodeURIComponent(nome)}&nome_civil=${encodeURIComponent(nomeCivil)}`),
+      fetchJSON<Patrimonio>(`/patrimonio/deputado-federal?nome=${encodeURIComponent(nome)}&nome_civil=${encodeURIComponent(nomeCivil)}`, 120_000),
     senador: (nome: string) =>
-      fetchJSON<Patrimonio>(`/patrimonio/senador?nome=${encodeURIComponent(nome)}`),
+      fetchJSON<Patrimonio>(`/patrimonio/senador?nome=${encodeURIComponent(nome)}`, 120_000),
     deputadoEstadual: (nome: string, uf = "SP") =>
-      fetchJSON<Patrimonio>(`/patrimonio/deputado-estadual?nome=${encodeURIComponent(nome)}&uf=${uf}`),
+      fetchJSON<Patrimonio>(`/patrimonio/deputado-estadual?nome=${encodeURIComponent(nome)}&uf=${uf}`, 120_000),
   },
   comparar: {
     deputados: (idA: number, idB: number) =>
-      fetchJSON<CompararResult>(`/comparar/deputados/${idA}/${idB}`),
+      fetchJSON<CompararResult>(`/comparar/deputados/${idA}/${idB}`, 120_000),
   },
 };

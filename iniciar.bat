@@ -51,8 +51,7 @@ start http://localhost:3000
 echo.
 echo  ==========================================
 echo   Tudo iniciado!
-echo   Backend:  http://localhost:8000
-echo   Frontend: http://localhost:3000
+echo   Acesse: http://localhost:3000
 echo   Feche as janelas pretas para encerrar.
 echo  ==========================================
 echo.
