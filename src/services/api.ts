@@ -1,7 +1,7 @@
 import type { Activity, CompararResult, Deputado, DeputadoDetail, DeputadoDespesa, DeputadoEstadual, DeputadoVotacao, Partido, PartidoGastos, PartidoLideranca, PartidoVotacoesStats, Patrimonio, Proposicao, Senador, Votacao, VotacaoVotos } from "../types";
 
 
-const BASE_URL = `/api/v1`;
+const BASE_URL = (import.meta.env.VITE_API_URL as string | undefined) ?? `/api/v1`;
 
 async function fetchJSON<T>(path: string, timeoutMs = 30_000): Promise<T> {
   const controller = new AbortController();
