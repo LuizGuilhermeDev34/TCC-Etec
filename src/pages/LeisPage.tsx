@@ -251,7 +251,13 @@ export function LeisPage() {
   function loadProposicoes() {
     setStatusProp("loading");
     api.camara.proposicoes(ano, tipo, itens)
-      .then((d) => { setProposicoes(d); setStatusProp("success"); })
+      .then((d) => {
+        const sorted = [...d].sort((a, b) =>
+          new Date(b.data_apresentacao ?? 0).getTime() - new Date(a.data_apresentacao ?? 0).getTime()
+        );
+        setProposicoes(sorted);
+        setStatusProp("success");
+      })
       .catch((e: Error) => setStatusProp(e.message === "offline" ? "offline" : "error"));
   }
 
