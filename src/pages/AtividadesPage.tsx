@@ -21,6 +21,25 @@ const GLOSSARIO: Record<string, string> = {
 
 function siglaLabel(s: string) { return GLOSSARIO[s.toUpperCase()] ?? s; }
 
+const PROP_SIGLAS = ["PL", "PEC", "MPV", "MP", "PDL", "PLP", "REQ", "MSC", "INC", "PRC"];
+
+function extractPropSigla(title: string, desc: string): string | null {
+  const first = title.split(/[\s/]/)[0].toUpperCase();
+  if (PROP_SIGLAS.includes(first)) return first;
+  const map: [RegExp, string][] = [
+    [/projeto de lei complementar/i, "PLP"],
+    [/projeto de lei/i, "PL"],
+    [/proposta de emenda constitucional/i, "PEC"],
+    [/medida provis[oó]ria/i, "MPV"],
+    [/decreto legislativo/i, "PDL"],
+    [/lei complementar/i, "PLP"],
+  ];
+  for (const [re, sigla] of map) {
+    if (re.test(desc)) return sigla;
+  }
+  return null;
+}
+
 function fmtDate(iso: string) {
   if (!iso) return "—";
   try {
@@ -85,6 +104,7 @@ function ActivityCard({ a }: { a: Activity }) {
     : "border-blue-100 bg-white";
 
   const titleSigla = a.title.split(/[\s/]/)[0].toUpperCase();
+  const propSigla = isVot ? extractPropSigla(a.title, a.description) : null;
 
   return (
     <motion.div variants={slideInLeft} className={`flex-1 rounded-xl border p-4 shadow-sm ${borderCls}`}>
@@ -98,6 +118,18 @@ function ActivityCard({ a }: { a: Activity }) {
             <span className="rounded-full bg-blue-100 px-2.5 py-0.5 text-[11px] font-bold text-blue-700">
               Nova proposição
             </span>
+          )}
+          {propSigla && (
+            <div className="relative group/psig inline-block">
+              <span className="cursor-default rounded border border-slate-300 bg-white px-1.5 py-0.5 text-[10px] font-bold text-slate-600">
+                {propSigla}
+              </span>
+              {GLOSSARIO[propSigla] && (
+                <div className="pointer-events-none absolute bottom-full left-0 z-50 mb-1.5 w-52 rounded-lg border border-slate-100 bg-white p-2.5 shadow-xl opacity-0 group-hover/psig:opacity-100 transition-opacity duration-150">
+                  <p className="text-[11px] font-bold text-slate-800">{propSigla} — {GLOSSARIO[propSigla]}</p>
+                </div>
+              )}
+            </div>
           )}
           <span className="text-[11px] text-slate-400">
             {isVot ? siglaLabel(a.actor) : "Câmara dos Deputados"}
