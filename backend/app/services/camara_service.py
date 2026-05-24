@@ -269,7 +269,7 @@ async def get_proposicoes(ano: int = 2026, tipo: str = "", itens: int = 20) -> L
     if cached is not None:
         return cached
 
-    params: Dict[str, Any] = {"ano": ano, "itens": itens}
+    params: Dict[str, Any] = {"ano": ano, "itens": itens, "ordem": "DESC", "ordenarPor": "id"}
     if tipo:
         params["siglaTipo"] = tipo
 
