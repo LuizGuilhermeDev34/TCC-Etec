@@ -103,6 +103,7 @@ function ActivityCard({ a }: { a: Activity }) {
     : "border-blue-100 bg-white";
 
   const titleSigla = a.title.split(/[\s/]/)[0].toUpperCase();
+  const titleRest = a.title.slice(titleSigla.length).trim();
   const propSigla = isVot ? extractPropSigla(a.title, a.description) : null;
 
   return (
@@ -130,9 +131,13 @@ function ActivityCard({ a }: { a: Activity }) {
       </div>
 
       <p className={`font-semibold text-sm ${isVot ? (approved ? "text-green-900" : "text-red-900") : "text-slate-900"}`}>
-        {a.title}
-        {!isVot && GLOSSARIO[titleSigla] && (
-          <span className="ml-2 text-[11px] font-normal text-slate-400">— {GLOSSARIO[titleSigla].nome}</span>
+        {!isVot && GLOSSARIO[titleSigla] ? (
+          <span className="inline-flex flex-wrap items-baseline gap-1.5">
+            <SiglaTooltip sigla={titleSigla} />
+            <span>{titleRest}</span>
+          </span>
+        ) : (
+          a.title
         )}
       </p>
       <p className={`mt-1 text-xs leading-relaxed line-clamp-2 ${isVot ? (approved ? "text-green-800" : "text-red-800") : "text-slate-500"}`}>
