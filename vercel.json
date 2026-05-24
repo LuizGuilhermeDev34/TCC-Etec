@@ -2,7 +2,9 @@
   "buildCommand": "npm run build",
   "outputDirectory": "src/dist",
   "installCommand": "npm install",
-  "env": {
-    "VITE_API_URL": "https://tcc-etec-production.up.railway.app/api/v1"
+  "build": {
+    "env": {
+      "VITE_API_URL": "https://tcc-etec-production.up.railway.app/api/v1"
+    }
   }
 }
