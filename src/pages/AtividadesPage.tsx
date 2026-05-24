@@ -60,37 +60,6 @@ function fmtNow(d: Date) {
   return d.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
 }
 
-// ── Ícone por tipo ────────────────────────────────────────────────────────────
-
-function ActivityIcon({ a }: { a: Activity }) {
-  if (a.type === "votacao") {
-    const approved = a.aprovacao === 1;
-    return (
-      <div className={`relative z-10 flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full shadow-sm ${
-        approved ? "bg-green-500" : "bg-red-500"
-      }`}>
-        {approved ? (
-          <svg className="h-5 w-5 text-white" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" d="m4.5 12.75 6 6 9-13.5" />
-          </svg>
-        ) : (
-          <svg className="h-5 w-5 text-white" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
-          </svg>
-        )}
-      </div>
-    );
-  }
-  // proposição
-  return (
-    <div className="relative z-10 flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-blue-600 shadow-sm">
-      <svg className="h-5 w-5 text-white" fill="none" viewBox="0 0 24 24" strokeWidth={1.8} stroke="currentColor">
-        <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z" />
-      </svg>
-    </div>
-  );
-}
-
 // ── Card de atividade ─────────────────────────────────────────────────────────
 
 function ActivityCard({ a }: { a: Activity }) {
@@ -387,16 +356,12 @@ export function AtividadesPage() {
                   animate="show"
                   className="relative"
                 >
-                  {/* Linha vertical da timeline */}
-                  <div className="absolute left-[19px] top-3 bottom-3 w-px bg-slate-200 pointer-events-none" />
-
                   <div className="space-y-4">
                     {filtered.length === 0 && (
                       <p className="py-12 text-center text-sm text-slate-400">Nenhuma atividade nesta categoria.</p>
                     )}
                     {filtered.map((a, i) => (
-                      <motion.div key={i} variants={slideInLeft} className="flex gap-4">
-                        <ActivityIcon a={a} />
+                      <motion.div key={i} variants={slideInLeft}>
                         <ActivityCard a={a} />
                       </motion.div>
                     ))}
