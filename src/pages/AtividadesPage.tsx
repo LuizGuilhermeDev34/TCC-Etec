@@ -121,9 +121,15 @@ function ActivityCard({ a }: { a: Activity }) {
           )}
           {isVot && propSigla && <SiglaTooltip sigla={propSigla} className="border-slate-300 bg-white text-slate-600" />}
           {isVot && !propSigla && (
-            <span className="rounded border border-slate-200 bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold text-slate-400">
-              Procedural
-            </span>
+            <div className="relative group/proc inline-block">
+              <span className="cursor-default rounded border border-slate-200 bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold text-slate-400">
+                Procedural <span className="opacity-40">?</span>
+              </span>
+              <div className="pointer-events-none absolute bottom-full left-0 z-50 mb-1.5 w-56 rounded-lg border border-slate-100 bg-white p-3 shadow-xl opacity-0 group-hover/proc:opacity-100 transition-opacity duration-150">
+                <p className="text-xs font-bold text-slate-800">Voto procedural</p>
+                <p className="mt-1 text-[11px] text-slate-500 leading-relaxed">Votação sobre uma etapa interna do processo legislativo — como manter um texto, rejeitar emendas ou encerrar discussão. Não está vinculada a um projeto de lei específico.</p>
+              </div>
+            </div>
           )}
           <span className="text-[11px] text-slate-400">
             {isVot ? siglaLabel(a.actor) : "Câmara dos Deputados"}
