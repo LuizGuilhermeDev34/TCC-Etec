@@ -15,8 +15,7 @@ export function OfflineBanner({ source = "servidor", onRetry }: OfflineBannerPro
         <div className="flex-1">
           <h3 className="font-semibold text-amber-800">Serviço indisponível</h3>
           <p className="mt-1 text-sm text-amber-700">
-            Não foi possível conectar ao {source}. Verifique se o backend está em execução em{" "}
-            <code className="rounded bg-amber-100 px-1 font-mono text-xs">localhost:8000</code>.
+            Não foi possível conectar ao {source}. O serviço pode estar temporariamente indisponível — tente novamente em instantes.
           </p>
           {onRetry && (
             <button
