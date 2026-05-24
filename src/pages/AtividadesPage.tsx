@@ -119,7 +119,12 @@ function ActivityCard({ a }: { a: Activity }) {
               Nova proposição
             </span>
           )}
-          {propSigla && <SiglaTooltip sigla={propSigla} className="border-slate-300 bg-white text-slate-600" />}
+          {isVot && propSigla && <SiglaTooltip sigla={propSigla} className="border-slate-300 bg-white text-slate-600" />}
+          {isVot && !propSigla && (
+            <span className="rounded border border-slate-200 bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold text-slate-400">
+              Procedural
+            </span>
+          )}
           <span className="text-[11px] text-slate-400">
             {isVot ? siglaLabel(a.actor) : "Câmara dos Deputados"}
           </span>
