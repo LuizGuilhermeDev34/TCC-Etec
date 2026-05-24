@@ -9,17 +9,47 @@ import type { Activity, ApiStatus } from "../types";
 
 type Tab = "tudo" | "votacoes" | "proposicoes";
 
-const GLOSSARIO: Record<string, string> = {
-  PL: "Projeto de Lei", PEC: "Emenda Constitucional", MPV: "Medida Provisória",
-  MP: "Medida Provisória", PDL: "Decreto Legislativo", PLP: "Lei Complementar",
-  REQ: "Requerimento", PROC: "Processo Interno", MSC: "Mensagem do Executivo",
-  INC: "Indicação", PLEN: "Plenário", CCJ: "Comissão de Constituição e Justiça",
-  CLP: "Comissão de Legislação Participativa", CMULHER: "Comissão da Mulher",
-  CFT: "Comissão de Finanças e Tributação", CDHM: "Comissão de Direitos Humanos",
-  CSSF: "Comissão de Seguridade Social e Família", CTASP: "Comissão de Trabalho",
+const GLOSSARIO: Record<string, { nome: string; descricao: string }> = {
+  PL:      { nome: "Projeto de Lei",                   descricao: "Proposta de criação ou alteração de lei ordinária. Apresentada por deputados, senadores ou pelo Executivo." },
+  PEC:     { nome: "Emenda Constitucional",             descricao: "Altera a Constituição Federal. Exige aprovação de 3/5 dos parlamentares em dois turnos de votação." },
+  MPV:     { nome: "Medida Provisória",                 descricao: "Lei temporária editada pelo Presidente com força imediata, válida por 60 dias (prorrogável). Precisa ser aprovada pelo Congresso." },
+  MP:      { nome: "Medida Provisória",                 descricao: "Lei temporária editada pelo Presidente com força imediata, válida por 60 dias (prorrogável). Precisa ser aprovada pelo Congresso." },
+  PDL:     { nome: "Decreto Legislativo",               descricao: "Ato do Congresso que não precisa de sanção presidencial. Usado para aprovar tratados internacionais, sustar atos do Executivo, etc." },
+  PLP:     { nome: "Lei Complementar",                  descricao: "Complementa a Constituição em temas específicos. Exige maioria absoluta — mais da metade de todos os parlamentares." },
+  REQ:     { nome: "Requerimento",                      descricao: "Pedido formal feito por deputado ou partido — pode ser de urgência, adiamento, convocação de ministro, pedido de informações, etc." },
+  PROC:    { nome: "Processo Interno",                  descricao: "Documento administrativo de tramitação interna da Câmara — comunicados, indicações ou registros procedimentais que não têm força de lei." },
+  MSC:     { nome: "Mensagem do Executivo",             descricao: "Comunicado oficial enviado pelo Presidente da República ao Congresso. Pode ser envio de projetos, informações ou vetos." },
+  INC:     { nome: "Indicação",                         descricao: "Sugestão dirigida ao Poder Executivo para que tome alguma providência. Não tem força de lei obrigatória." },
+  PLEN:    { nome: "Plenário",                          descricao: "Sessão com todos os deputados presentes. Decisões aqui têm peso máximo e geralmente são definitivas." },
+  CCJ:     { nome: "Comissão de Constituição e Justiça", descricao: "Analisa se as proposições são constitucionais antes de irem ao plenário." },
+  CLP:     { nome: "Comissão de Legislação Participativa", descricao: "Recebe e analisa sugestões de cidadãos e organizações da sociedade civil para criação de leis." },
+  CFT:     { nome: "Comissão de Finanças e Tributação", descricao: "Analisa o impacto financeiro e tributário das proposições antes de irem a votação." },
+  CDHM:    { nome: "Comissão de Direitos Humanos",      descricao: "Analisa proposições relativas a direitos humanos, minorias étnicas e grupos vulneráveis." },
+  CSSF:    { nome: "Comissão de Seguridade Social e Família", descricao: "Analisa proposições sobre saúde, previdência social, assistência social e direitos da família." },
+  CTASP:   { nome: "Comissão de Trabalho",              descricao: "Analisa proposições sobre direitos trabalhistas, emprego e serviço público." },
+  CMULHER: { nome: "Comissão de Defesa dos Direitos da Mulher", descricao: "Comissão permanente dedicada a proposições relacionadas aos direitos e à proteção da mulher." },
 };
 
-function siglaLabel(s: string) { return GLOSSARIO[s.toUpperCase()] ?? s; }
+function siglaInfo(s: string) { return GLOSSARIO[s.toUpperCase()] ?? null; }
+function siglaLabel(s: string) { return GLOSSARIO[s.toUpperCase()]?.nome ?? s; }
+
+function SiglaTooltip({ sigla, className }: { sigla: string; className?: string }) {
+  const info = siglaInfo(sigla);
+  return (
+    <div className="relative group/stip inline-block">
+      <span className={`cursor-default rounded border px-1.5 py-0.5 text-[10px] font-bold ${className ?? "border-blue-200 bg-blue-50 text-blue-700"}`}>
+        {sigla}
+        {info && <span className="ml-0.5 text-[8px] opacity-40">?</span>}
+      </span>
+      {info && (
+        <div className="pointer-events-none absolute bottom-full left-0 z-50 mb-1.5 w-56 rounded-lg border border-slate-100 bg-white p-3 shadow-xl opacity-0 group-hover/stip:opacity-100 transition-opacity duration-150">
+          <p className="text-xs font-bold text-slate-800">{sigla} — {info.nome}</p>
+          <p className="mt-1 text-[11px] text-slate-500 leading-relaxed">{info.descricao}</p>
+        </div>
+      )}
+    </div>
+  );
+}
 
 const PROP_SIGLAS = ["PL", "PEC", "MPV", "MP", "PDL", "PLP", "REQ", "MSC", "INC", "PRC"];
 
@@ -88,18 +118,7 @@ function ActivityCard({ a }: { a: Activity }) {
               Nova proposição
             </span>
           )}
-          {propSigla && (
-            <div className="relative group/psig inline-block">
-              <span className="cursor-default rounded border border-slate-300 bg-white px-1.5 py-0.5 text-[10px] font-bold text-slate-600">
-                {propSigla}
-              </span>
-              {GLOSSARIO[propSigla] && (
-                <div className="pointer-events-none absolute bottom-full left-0 z-50 mb-1.5 w-52 rounded-lg border border-slate-100 bg-white p-2.5 shadow-xl opacity-0 group-hover/psig:opacity-100 transition-opacity duration-150">
-                  <p className="text-[11px] font-bold text-slate-800">{propSigla} — {GLOSSARIO[propSigla]}</p>
-                </div>
-              )}
-            </div>
-          )}
+          {propSigla && <SiglaTooltip sigla={propSigla} className="border-slate-300 bg-white text-slate-600" />}
           <span className="text-[11px] text-slate-400">
             {isVot ? siglaLabel(a.actor) : "Câmara dos Deputados"}
           </span>
@@ -113,7 +132,7 @@ function ActivityCard({ a }: { a: Activity }) {
       <p className={`font-semibold text-sm ${isVot ? (approved ? "text-green-900" : "text-red-900") : "text-slate-900"}`}>
         {a.title}
         {!isVot && GLOSSARIO[titleSigla] && (
-          <span className="ml-2 text-[11px] font-normal text-slate-400">— {GLOSSARIO[titleSigla]}</span>
+          <span className="ml-2 text-[11px] font-normal text-slate-400">— {GLOSSARIO[titleSigla].nome}</span>
         )}
       </p>
       <p className={`mt-1 text-xs leading-relaxed line-clamp-2 ${isVot ? (approved ? "text-green-800" : "text-red-800") : "text-slate-500"}`}>
@@ -214,15 +233,8 @@ function Sidebar({ activities }: { activities: Activity[] }) {
               const sigla = p.title.split(/[\s/]/)[0].toUpperCase();
               return (
                 <div key={i} className="flex items-start gap-2">
-                  <div className="relative group/stip mt-0.5 flex-shrink-0">
-                    <span className="cursor-default rounded border border-blue-200 bg-blue-50 px-1.5 py-0.5 text-[10px] font-bold text-blue-700">
-                      {sigla}
-                    </span>
-                    {GLOSSARIO[sigla] && (
-                      <div className="pointer-events-none absolute bottom-full left-0 z-50 mb-1.5 w-48 rounded-lg border border-slate-100 bg-white p-2.5 shadow-xl opacity-0 group-hover/stip:opacity-100 transition-opacity duration-150">
-                        <p className="text-[11px] font-bold text-slate-800">{sigla} — {GLOSSARIO[sigla]}</p>
-                      </div>
-                    )}
+                  <div className="mt-0.5 flex-shrink-0">
+                    <SiglaTooltip sigla={sigla} />
                   </div>
                   <div className="min-w-0">
                     <p className="text-xs font-semibold text-slate-700 truncate">{p.title}</p>
