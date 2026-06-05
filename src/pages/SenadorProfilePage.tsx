@@ -202,6 +202,38 @@ export function SenadorProfilePage() {
               )}
             </div>
 
+            {/* ── REMUNERAÇÃO ── */}
+            <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+              <div className="mb-4 flex items-center gap-2">
+                <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-violet-50">
+                  <svg className="h-4 w-4 text-violet-600" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v12m-3-2.818.879.659c1.171.879 3.07.879 4.242 0 1.172-.879 1.172-2.303 0-3.182C13.536 12.219 12.768 12 12 12c-.725 0-1.45-.22-2.003-.659-1.106-.879-1.106-2.303 0-3.182s2.9-.879 4.006 0l.415.33M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
+                  </svg>
+                </div>
+                <h2 className="text-sm font-bold text-slate-800">Remuneração</h2>
+              </div>
+
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <div className="rounded-xl bg-violet-50 px-4 py-3">
+                  <p className="text-[11px] font-semibold uppercase tracking-wide text-violet-700">Subsídio mensal bruto</p>
+                  <p className="mt-1 text-2xl font-bold text-violet-900">R$&nbsp;46.366,19</p>
+                  <p className="mt-1 text-[11px] text-violet-600">Igual para todos os senadores</p>
+                </div>
+                <div className="rounded-xl bg-slate-50 px-4 py-3">
+                  <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Teto constitucional</p>
+                  <p className="mt-1 text-2xl font-bold text-slate-700">R$&nbsp;46.366,19</p>
+                  <p className="mt-1 text-[11px] text-slate-400">Fixado pelo STF como teto do funcionalismo</p>
+                </div>
+              </div>
+
+              <p className="mt-3 text-[11px] text-slate-400">
+                O subsídio é fixado por lei e é idêntico para todos os senadores em exercício. Não inclui CEAPS, passagens ou outras verbas indenizatórias.{" "}
+                <a href="https://www.senado.leg.br/transparencia/RH/Salarios/salarios.asp" target="_blank" rel="noopener noreferrer" className="underline hover:text-slate-600">
+                  Ver no portal de transparência
+                </a>
+              </p>
+            </div>
+
             {/* ── GASTOS CEAPS ── */}
             <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
               <div className="mb-4 flex items-center gap-2">
