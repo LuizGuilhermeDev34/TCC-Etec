@@ -16,11 +16,13 @@ export function PatrimonioCard({ fetchPatrimonio, tseLink }: Props) {
   const [status, setStatus] = useState<ApiStatus>("idle");
 
   useEffect(() => {
+    let cancelled = false;
     setStatus("loading");
     fetchPatrimonio()
-      .then((p) => { setPatrimonio(p); setStatus("success"); })
-      .catch(() => setStatus("error"));
-  }, [fetchPatrimonio]);
+      .then((p) => { if (!cancelled) { setPatrimonio(p); setStatus("success"); } })
+      .catch(() => { if (!cancelled) setStatus("error"); });
+    return () => { cancelled = true; };
+  }, []);
 
   const categorias = patrimonio ? Object.entries(patrimonio.categorias) : [];
 

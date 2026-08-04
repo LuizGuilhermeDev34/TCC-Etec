@@ -50,10 +50,12 @@ export function DeputadoEstadualProfilePage() {
 
   useEffect(() => {
     if (!id) return;
+    let cancelled = false;
     setStatus("loading");
     api.estaduais.deputadoById(Number(id))
-      .then((d) => { setDeputado(d); setStatus("success"); })
-      .catch((e: Error) => setStatus(e.message === "offline" ? "offline" : "error"));
+      .then((d) => { if (!cancelled) { setDeputado(d); setStatus("success"); } })
+      .catch((e: Error) => { if (!cancelled) setStatus(e.message === "offline" ? "offline" : "error"); });
+    return () => { cancelled = true; };
   }, [id]);
 
   if (status === "loading") {

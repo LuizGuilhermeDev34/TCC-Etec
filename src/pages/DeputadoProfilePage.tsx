@@ -66,16 +66,19 @@ export function DeputadoProfilePage() {
   useEffect(() => {
     if (!id) return;
     const nid = Number(id);
+    let cancelled = false;
 
     setStatusDep("loading");
     api.camara.deputadoById(nid)
-      .then((d) => { setDeputado(d); setStatusDep("success"); })
-      .catch((e: Error) => setStatusDep(e.message === "offline" ? "offline" : "error"));
+      .then((d) => { if (!cancelled) { setDeputado(d); setStatusDep("success"); } })
+      .catch((e: Error) => { if (!cancelled) setStatusDep(e.message === "offline" ? "offline" : "error"); });
 
     setStatusProp("loading");
     api.camara.deputadoProposicoes(nid)
-      .then((p) => { setProposicoes(p); setStatusProp("success"); })
-      .catch(() => setStatusProp("error"));
+      .then((p) => { if (!cancelled) { setProposicoes(p); setStatusProp("success"); } })
+      .catch(() => { if (!cancelled) setStatusProp("error"); });
+
+    return () => { cancelled = true; };
   }, [id]);
 
   if (statusDep === "loading") {

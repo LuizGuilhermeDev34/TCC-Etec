@@ -354,39 +354,40 @@ export function PartidoProfilePage() {
   useEffect(() => {
     if (!id) return;
     const nid = Number(id);
+    let cancelled = false;
 
     setStatusPartido("loading");
     api.camara.partidoById(nid)
-      .then((p) => { setPartido(p); setStatusPartido("success"); })
-      .catch((e: Error) => setStatusPartido(e.message === "offline" ? "offline" : "error"));
+      .then((p) => { if (!cancelled) { setPartido(p); setStatusPartido("success"); } })
+      .catch((e: Error) => { if (!cancelled) setStatusPartido(e.message === "offline" ? "offline" : "error"); });
 
     setStatusDep("loading");
     api.camara.deputados()
-      .then((all) => { setDeputados(all); setStatusDep("success"); })
-      .catch(() => setStatusDep("error"));
+      .then((all) => { if (!cancelled) { setDeputados(all); setStatusDep("success"); } })
+      .catch(() => { if (!cancelled) setStatusDep("error"); });
 
     setStatusVot("loading");
     api.camara.partidoVotacoesStats(nid)
-      .then((s) => { setVotStats(s); setStatusVot("success"); })
-      .catch(() => setStatusVot("error"));
+      .then((s) => { if (!cancelled) { setVotStats(s); setStatusVot("success"); } })
+      .catch(() => { if (!cancelled) setStatusVot("error"); });
 
     const votRefresh = setInterval(() => {
       api.camara.partidoVotacoesStats(nid)
-        .then((s) => { setVotStats(s); setStatusVot("success"); })
+        .then((s) => { if (!cancelled) { setVotStats(s); setStatusVot("success"); } })
         .catch(() => {});
     }, 15 * 60 * 1000);
 
     setStatusGastos("loading");
     api.camara.partidoGastos(nid)
-      .then((g) => { setGastos(g); setStatusGastos("success"); })
-      .catch(() => setStatusGastos("error"));
+      .then((g) => { if (!cancelled) { setGastos(g); setStatusGastos("success"); } })
+      .catch(() => { if (!cancelled) setStatusGastos("error"); });
 
     setStatusLideranca("loading");
     api.camara.partidoLideranca(nid)
-      .then((l) => { setLideranca(l); setStatusLideranca("success"); })
-      .catch(() => setStatusLideranca("error"));
+      .then((l) => { if (!cancelled) { setLideranca(l); setStatusLideranca("success"); } })
+      .catch(() => { if (!cancelled) setStatusLideranca("error"); });
 
-    return () => clearInterval(votRefresh);
+    return () => { cancelled = true; clearInterval(votRefresh); };
   }, [id]);
 
   const membros = partido

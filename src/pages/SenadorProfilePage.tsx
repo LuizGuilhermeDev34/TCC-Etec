@@ -54,21 +54,26 @@ export function SenadorProfilePage() {
 
   useEffect(() => {
     if (!codigo) return;
+    let cancelled = false;
+
     // Load senator from the list (we match by código)
     setStatusSen("loading");
     api.senado.senadores()
       .then((list) => {
+        if (cancelled) return;
         const found = list.find((s) => s.codigo === codigo);
         if (found) { setSenador(found); setStatusSen("success"); }
         else setStatusSen("error");
       })
-      .catch((e: Error) => setStatusSen(e.message === "offline" ? "offline" : "error"));
+      .catch((e: Error) => { if (!cancelled) setStatusSen(e.message === "offline" ? "offline" : "error"); });
 
     // Load votações
     setStatusVot("loading");
     api.senado.senadorVotacoes(codigo)
-      .then((v) => { setVotacoes(v); setStatusVot("success"); })
-      .catch(() => setStatusVot("error"));
+      .then((v) => { if (!cancelled) { setVotacoes(v); setStatusVot("success"); } })
+      .catch(() => { if (!cancelled) setStatusVot("error"); });
+
+    return () => { cancelled = true; };
   }, [codigo]);
 
   const stats = computeStats(votacoes);

@@ -99,7 +99,16 @@ async def get_deputados(legislatura: int = 57) -> List[Deputado]:
         params={"idLegislatura": legislatura, "itens": 513},
     )
     items = payload.get("dados", [])
-    deputados = sorted([_to_deputado(item) for item in items], key=lambda d: d.nome)
+
+    # A API da Câmara retorna uma linha por período de filiação partidária —
+    # um deputado que trocou de partido na legislatura aparece duplicado, uma
+    # vez por partido. A última ocorrência é sempre a filiação atual.
+    by_id: Dict[int, Deputado] = {}
+    for item in items:
+        dep = _to_deputado(item)
+        by_id[dep.id] = dep
+
+    deputados = sorted(by_id.values(), key=lambda d: d.nome)
     _cache.set(cache_key, deputados)
     return deputados
 
