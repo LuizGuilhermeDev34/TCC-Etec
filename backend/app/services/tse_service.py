@@ -6,13 +6,15 @@ Cargos: 6=Dep.Federal, 7=Dep.Estadual, 5=Senador
 import csv
 import io
 import zipfile
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Iterator, List, Optional, Set
 
 import httpx
 
 # ── URLs dos ZIPs ──────────────────────────────────────────────────────────────
 _CAND_ZIP = "https://cdn.tse.jus.br/estatistica/sead/odsele/consulta_cand/consulta_cand_2022.zip"
 _BENS_ZIP = "https://cdn.tse.jus.br/estatistica/sead/odsele/bem_candidato/bem_candidato_2022.zip"
+
+_CARGOS_RELEVANTES = {"5", "6", "7"}
 
 # ── Índices em memória ─────────────────────────────────────────────────────────
 # nome_upper → list[{"sq", "uf", "cargo"}]
@@ -29,13 +31,14 @@ async def _download_zip(url: str) -> bytes:
         return r.content
 
 
-def _read_csv_from_zip(data: bytes, encoding: str = "latin-1") -> List[Dict[str, str]]:
+def _iter_csv_from_zip(data: bytes, encoding: str = "latin-1") -> Iterator[Dict[str, str]]:
     with zipfile.ZipFile(io.BytesIO(data)) as zf:
         brasil = [n for n in zf.namelist() if "BRASIL" in n.upper() and n.endswith(".csv")]
         name = brasil[0] if brasil else zf.namelist()[0]
         with zf.open(name) as f:
             reader = csv.DictReader(io.TextIOWrapper(f, encoding=encoding), delimiter=";")
-            return list(reader)
+            for row in reader:
+                yield row
 
 
 # asyncio.gather sem importar asyncio no topo (evita circular import)
@@ -56,24 +59,25 @@ async def _ensure_indices() -> None:
             _download_zip(_CAND_ZIP),
             _download_zip(_BENS_ZIP),
         )
-        cand_rows = _read_csv_from_zip(cand_bytes)
-        bens_rows = _read_csv_from_zip(bens_bytes)
 
         ci: Dict[str, List[Dict[str, str]]] = {}
-        for row in cand_rows:
+        sqs_relevantes: Set[str] = set()
+        for row in _iter_csv_from_zip(cand_bytes):
+            cargo = row.get("CD_CARGO", "")
+            if cargo not in _CARGOS_RELEVANTES:
+                continue
             nome = row.get("NM_CANDIDATO", "").upper().strip()
-            if nome:
-                ci.setdefault(nome, []).append({
-                    "sq": row.get("SQ_CANDIDATO", ""),
-                    "uf": row.get("SG_UF", ""),
-                    "cargo": row.get("CD_CARGO", ""),
-                })
+            sq = row.get("SQ_CANDIDATO", "")
+            if not nome or not sq:
+                continue
+            ci.setdefault(nome, []).append({"sq": sq, "uf": row.get("SG_UF", ""), "cargo": cargo})
+            sqs_relevantes.add(sq)
         _cand_index = ci
 
         bi: Dict[str, List[Dict[str, Any]]] = {}
-        for row in bens_rows:
+        for row in _iter_csv_from_zip(bens_bytes):
             sq = row.get("SQ_CANDIDATO", "").strip()
-            if not sq:
+            if not sq or sq not in sqs_relevantes:
                 continue
             valor_str = row.get("VR_BEM_CANDIDATO", "0").replace(".", "").replace(",", ".")
             try:
