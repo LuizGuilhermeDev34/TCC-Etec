@@ -6,5 +6,8 @@
     "env": {
       "VITE_API_URL": "https://tcc-etec-backend.onrender.com/api/v1"
     }
-  }
+  },
+  "rewrites": [
+    { "source": "/(.*)", "destination": "/index.html" }
+  ]
 }
