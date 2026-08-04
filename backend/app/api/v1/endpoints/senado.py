@@ -20,7 +20,7 @@ async def read_senadores() -> List[SenadorOut]:
 
 @router.get("/senadores/{codigo}/votacoes", response_model=List[DeputadoVotacaoOut])
 async def read_senador_votacoes(
-    codigo: str = Path(...),
+    codigo: str = Path(..., pattern=r"^[A-Za-z0-9-]+$"),
     data_inicio: str | None = Query(None),
 ) -> List[DeputadoVotacaoOut]:
     try:

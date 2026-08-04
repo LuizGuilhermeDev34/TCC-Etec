@@ -1,10 +1,13 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from ..core import RateLimitMiddleware
 from .v1 import router as api_v1_router
 
 
 def create_app() -> FastAPI:
     app = FastAPI(title="Democratização de Dados - Backend")
+
+    app.add_middleware(RateLimitMiddleware, limit=60, window_seconds=60)
 
     app.add_middleware(
         CORSMiddleware,

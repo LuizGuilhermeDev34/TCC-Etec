@@ -135,7 +135,7 @@ async def read_proposicoes(
 
 
 @router.get("/votacoes/{votacao_id}/votos")
-async def read_votacao_votos(votacao_id: str = Path(...)) -> Any:
+async def read_votacao_votos(votacao_id: str = Path(..., pattern=r"^[A-Za-z0-9-]+$")) -> Any:
     try:
         return await get_votacao_votos(votacao_id)
     except HTTPStatusError as error:
