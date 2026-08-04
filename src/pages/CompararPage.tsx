@@ -710,12 +710,14 @@ export function CompararPage() {
       setStatus("idle");
       return;
     }
+    let cancelled = false;
     setStatus("loading");
     setResult(null);
     api.comparar
       .deputados(selA.id, selB.id)
-      .then((r) => { setResult(r); setStatus("success"); })
-      .catch(() => setStatus("error"));
+      .then((r) => { if (!cancelled) { setResult(r); setStatus("success"); } })
+      .catch(() => { if (!cancelled) setStatus("error"); });
+    return () => { cancelled = true; };
   }, [selA, selB]);
 
   return (

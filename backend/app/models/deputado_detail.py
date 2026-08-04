@@ -20,7 +20,6 @@ class DeputadoDetail:
     id_legislatura: int
     url_foto: Optional[str] = None
     email: Optional[str] = None
-    cpf: Optional[str] = None
     sexo: Optional[str] = None
     data_nascimento: Optional[str] = None
     uf_nascimento: Optional[str] = None

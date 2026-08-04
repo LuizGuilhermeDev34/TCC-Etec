@@ -25,7 +25,6 @@ export interface DeputadoVotacao {
   data: string;
   sigla_orgao: string;
   tipo_voto: string;
-  proposicao_id: number | null;
   proposicao_ementa: string | null;
   proposicao_sigla: string | null;
   proposicao_numero: number | null;
@@ -51,7 +50,6 @@ export interface GabineteInfo {
 
 export interface DeputadoDetail extends Deputado {
   nome_civil: string;
-  cpf: string | null;
   sexo: string | null;
   data_nascimento: string | null;
   uf_nascimento: string | null;

@@ -248,30 +248,44 @@ export function LeisPage() {
   const votParamsRef = useRef({ mes: votMes, ano: votAno });
   useEffect(() => { votParamsRef.current = { mes: votMes, ano: votAno }; }, [votMes, votAno]);
 
+  // loadProposicoes/loadVotacoes são chamadas tanto pelo efeito automático quanto
+  // pelos botões de retry/atualizar — um contador de requisição garante que só a
+  // resposta da chamada mais recente é aplicada, não importa de onde ela veio.
+  const propReqId = useRef(0);
+  const votReqId = useRef(0);
+
   function loadProposicoes() {
+    const reqId = ++propReqId.current;
     setStatusProp("loading");
     api.camara.proposicoes(ano, tipo, itens)
       .then((d) => {
+        if (reqId !== propReqId.current) return;
         const sorted = [...d].sort((a, b) =>
           new Date(b.data_apresentacao ?? 0).getTime() - new Date(a.data_apresentacao ?? 0).getTime()
         );
         setProposicoes(sorted);
         setStatusProp("success");
       })
-      .catch((e: Error) => setStatusProp(e.message === "offline" ? "offline" : "error"));
+      .catch((e: Error) => {
+        if (reqId !== propReqId.current) return;
+        setStatusProp(e.message === "offline" ? "offline" : "error");
+      });
   }
 
   function loadVotacoes(mes = votMes, ano = votAno, silent = false) {
+    const reqId = ++votReqId.current;
     if (!silent) setStatusVot("loading");
     setRefreshing(true);
     api.camara.votacoes(100, buildDataInicio(mes, ano))
       .then((d) => {
+        if (reqId !== votReqId.current) return;
         setVotacoes(d);
         setStatusVot("success");
         setLastUpdated(new Date());
         setRefreshing(false);
       })
       .catch((e: Error) => {
+        if (reqId !== votReqId.current) return;
         setStatusVot(e.message === "offline" ? "offline" : "error");
         setRefreshing(false);
       });

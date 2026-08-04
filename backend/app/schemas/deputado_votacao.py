@@ -7,7 +7,6 @@ class DeputadoVotacaoOut(BaseModel):
     data: str
     sigla_orgao: str
     tipo_voto: str
-    proposicao_id: Optional[int] = None
     proposicao_ementa: Optional[str] = None
     proposicao_sigla: Optional[str] = None
     proposicao_numero: Optional[int] = None

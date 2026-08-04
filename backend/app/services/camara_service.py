@@ -355,7 +355,6 @@ async def get_deputado_detail(deputado_id: int) -> DeputadoDetail:
         id_legislatura=int(ultimo.get("idLegislatura", 57)),
         url_foto=ultimo.get("urlFoto"),
         email=ultimo.get("email"),
-        cpf=data.get("cpf"),
         sexo=data.get("sexo"),
         data_nascimento=data.get("dataNascimento"),
         uf_nascimento=data.get("ufNascimento"),

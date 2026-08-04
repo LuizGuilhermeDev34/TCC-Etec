@@ -229,16 +229,20 @@ export function PoliticosPage() {
 
   useEffect(() => {
     if (tab !== "senadores" || senadores.length > 0) return;
+    let cancelled = false;
     setStatusSen("loading");
-    api.senado.senadores().then((d) => { setSenadores(d); setStatusSen("success"); })
-      .catch((e: Error) => setStatusSen(e.message === "offline" ? "offline" : "error"));
+    api.senado.senadores().then((d) => { if (!cancelled) { setSenadores(d); setStatusSen("success"); } })
+      .catch((e: Error) => { if (!cancelled) setStatusSen(e.message === "offline" ? "offline" : "error"); });
+    return () => { cancelled = true; };
   }, [tab, senadores.length]);
 
   useEffect(() => {
     if (tab !== "estaduais" || estaduais.length > 0) return;
+    let cancelled = false;
     setStatusEst("loading");
-    api.estaduais.deputados("SP").then((d) => { setEstaduais(d); setStatusEst("success"); })
-      .catch((e: Error) => setStatusEst(e.message === "offline" ? "offline" : "error"));
+    api.estaduais.deputados("SP").then((d) => { if (!cancelled) { setEstaduais(d); setStatusEst("success"); } })
+      .catch((e: Error) => { if (!cancelled) setStatusEst(e.message === "offline" ? "offline" : "error"); });
+    return () => { cancelled = true; };
   }, [tab, estaduais.length]);
 
   const q = query.toLowerCase();
