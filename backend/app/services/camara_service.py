@@ -329,14 +329,16 @@ async def get_proposicoes(ano: int = 2026, tipo: str = "", itens: int = 20) -> L
 
 
 def _to_votacao(data: Dict[str, Any]) -> Votacao:
+    descricao_bruta = data.get("descricao", "")
     return Votacao(
         id=str(data.get("id", "")),
         data=data.get("data", ""),
         data_hora_registro=data.get("dataHoraRegistro", ""),
         sigla_orgao=data.get("siglaOrgao", ""),
         proposicao_objeto=data.get("proposicaoObjeto"),
-        descricao=_limpar_descricao(data.get("descricao", "")),
+        descricao=_limpar_descricao(descricao_bruta),
         aprovacao=int(data.get("aprovacao") or 0),
+        merito=bool(_VOTOS_SUFFIX_RE.search(descricao_bruta)),
     )
 
 
@@ -797,29 +799,33 @@ async def get_votacao_votos(votacao_id: str) -> Dict[str, Any]:
 async def _fetch_votacao_proposicao(
     client: httpx.AsyncClient,
     votacao_id: str,
-) -> tuple[str, Optional[str]]:
-    """Busca o nome real da proposição afetada por uma votação (ex: 'PL 5005/2026'),
-    via proposicoesAfetadas em /votacoes/{id}. Retorna None quando a votação não
-    tem proposição vinculada (despacho processual, redação final etc) — nesse
-    caso o texto genérico da listagem prevalece."""
+) -> tuple[str, Optional[str], Optional[str]]:
+    """Busca nome e ementa reais da proposição afetada por uma votação (ex:
+    'PL 5005/2026'), via proposicoesAfetadas em /votacoes/{id}. Retorna
+    (id, None, None) quando a votação não tem proposição vinculada (despacho
+    processual, redação final etc) — nesse caso o texto genérico da listagem
+    prevalece."""
     cached = _cache_votacao_proposicao.get(votacao_id)
     if cached is not None:
-        return votacao_id, (cached or None)
+        nome, ementa = cached
+        return votacao_id, (nome or None), ementa
     try:
         resp = await client.get(f"{_CAMARA_BASE}/votacoes/{votacao_id}", timeout=10.0)
         if not resp.is_success:
-            return votacao_id, None
+            return votacao_id, None, None
         afetadas = resp.json().get("dados", {}).get("proposicoesAfetadas") or []
-        nome = None
+        nome: Optional[str] = None
+        ementa: Optional[str] = None
         if afetadas:
             p = afetadas[0]
             sigla, numero, ano = p.get("siglaTipo"), p.get("numero"), p.get("ano")
             if sigla and numero and ano:
                 nome = f"{sigla} {numero}/{ano}"
-        _cache_votacao_proposicao.set(votacao_id, nome or "")
-        return votacao_id, nome
+            ementa = (p.get("ementa") or "").strip() or None
+        _cache_votacao_proposicao.set(votacao_id, (nome or "", ementa))
+        return votacao_id, nome, ementa
     except Exception:
-        return votacao_id, None
+        return votacao_id, None, None
 
 
 async def get_votacoes_recentes(
@@ -855,9 +861,10 @@ async def get_votacoes_recentes(
                 )
                 for result in results:
                     if isinstance(result, tuple):
-                        vid, nome = result
+                        vid, nome, ementa = result
                         if nome and vid in id_to_votacao:
                             id_to_votacao[vid].proposicao_objeto = nome
+                            id_to_votacao[vid].proposicao_ementa = ementa
                 if i + batch_size < len(votacoes):
                     await asyncio.sleep(0.2)
 

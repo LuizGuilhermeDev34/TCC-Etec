@@ -1,4 +1,4 @@
-import { BrowserRouter as Router, Routes, Route, useLocation, useNavigationType } from "react-router-dom";
+import { BrowserRouter as Router, Routes, Route, Navigate, useLocation, useNavigationType } from "react-router-dom";
 import { useEffect } from "react";
 import { AnimatePresence } from "framer-motion";
 import { Layout } from "./components/Layout";
@@ -10,7 +10,6 @@ import { SenadorProfilePage } from "./pages/SenadorProfilePage";
 import { PartidosPage } from "./pages/PartidosPage";
 import { PartidoProfilePage } from "./pages/PartidoProfilePage";
 import { LeisPage } from "./pages/LeisPage";
-import { AtividadesPage } from "./pages/AtividadesPage";
 import { CompararPage } from "./pages/CompararPage";
 
 /**
@@ -42,7 +41,9 @@ function AppRoutes() {
           <Route path="/partidos" element={<PartidosPage />} />
           <Route path="/partidos/:id" element={<PartidoProfilePage />} />
           <Route path="/leis" element={<LeisPage />} />
-          <Route path="/atividades" element={<AtividadesPage />} />
+          {/* Atividades foi incorporada em Leis e votos (filtro + HUD + voto por
+              partido). Redirect para não quebrar link/print antigo do grupo. */}
+          <Route path="/atividades" element={<Navigate to="/leis" replace />} />
           <Route path="/comparar" element={<CompararPage />} />
         </Routes>
       </AnimatePresence>

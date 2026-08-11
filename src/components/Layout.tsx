@@ -6,7 +6,6 @@ const navItems = [
   { path: "/politicos", label: "Políticos" },
   { path: "/partidos", label: "Partidos" },
   { path: "/leis", label: "Leis e votos" },
-  { path: "/atividades", label: "Atividades" },
   { path: "/comparar", label: "Comparar" },
 ];
 

@@ -10,5 +10,7 @@ class VotacaoOut(BaseModel):
     proposicao_objeto: Optional[str] = None
     descricao: str
     aprovacao: int
+    merito: bool = False
+    proposicao_ementa: Optional[str] = None
 
     model_config = {"from_attributes": True}

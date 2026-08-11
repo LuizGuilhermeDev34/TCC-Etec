@@ -114,6 +114,8 @@ export interface Votacao {
   proposicao_objeto: string | null;
   descricao: string;
   aprovacao: number;
+  merito: boolean;
+  proposicao_ementa?: string | null;
 }
 
 export interface PatrimonioItem {

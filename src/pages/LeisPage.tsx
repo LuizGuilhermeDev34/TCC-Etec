@@ -119,7 +119,9 @@ function VotacaoCard({ v }: { v: Votacao }) {
 
   // Descrições genéricas que não explicam o que foi votado
   const desc = (v.descricao || "").trim();
-  const isGeneric = /^(aprovad[oa]|rejeitad[oa]|mantido o texto|prejudicad[oa])\.?$/i.test(desc);
+  // v.merito vem do backend (placar embutido na descrição bruta da Câmara) —
+  // mais confiável que testar o texto da descrição já limpa aqui no front.
+  const isGeneric = !v.merito;
 
   const badgeCls = approved
     ? "border-green-300 bg-green-100 text-green-800"
@@ -166,6 +168,13 @@ function VotacaoCard({ v }: { v: Votacao }) {
             <span className="text-xs text-slate-500">{fmtDate(v.data)}</span>
           </div>
 
+          {/* Ementa real da proposição — o que a lei de fato trata, não só o número dela */}
+          {v.proposicao_ementa && (
+            <p className="mb-1.5 text-xs text-slate-600 leading-relaxed line-clamp-2">
+              {v.proposicao_ementa}
+            </p>
+          )}
+
           <p className={`text-sm font-medium leading-relaxed ${approved ? "text-green-900" : "text-red-900"}`}>
             {desc || "Votação sem descrição"}
           </p>
@@ -204,10 +213,13 @@ function HudResumo({ votacoes, periodoLabel }: { votacoes: Votacao[]; periodoLab
   const rejeitadas = votacoes.filter((v) => v.aprovacao === 0).length;
   const total = votacoes.length;
 
-  // Mesma classificação de VotacaoCard: mérito = tem proposição identificada
-  // (enriquecida pelo backend via proposicoesAfetadas), procedural = não tem.
-  const merito = votacoes.filter((v) => v.proposicao_objeto);
-  const procedural = votacoes.filter((v) => !v.proposicao_objeto);
+  // v.merito vem do backend: placar ("Sim/Não/Total") embutido na descrição
+  // bruta da Câmara, calculado ANTES do enriquecimento. Não usar
+  // proposicao_objeto aqui — depois do enriquecimento quase toda votação
+  // (inclusive despachos como "Aprovado o Parecer.") tem proposição
+  // identificada, o que faria todo mundo virar "mérito".
+  const merito = votacoes.filter((v) => v.merito);
+  const procedural = votacoes.filter((v) => !v.merito);
   const meritoAprovadas = merito.filter((v) => v.aprovacao === 1).length;
   const proceduralAprovadas = procedural.filter((v) => v.aprovacao === 1).length;
 
@@ -280,7 +292,10 @@ function HudResumo({ votacoes, periodoLabel }: { votacoes: Votacao[]; periodoLab
         )}
       </div>
 
-      {topProposicoes.length > 0 && (
+      {/* Só mostra o ranking quando há variação real — com tudo empatado em
+          1 voto, a lista não informa nada e a barra cheia sugeriria uma
+          magnitude que não existe. */}
+      {topProposicoes.length > 0 && topProposicoes[0][1] > 1 && (
         <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
           <p className="mb-3 text-xs font-bold uppercase tracking-wide text-slate-400">Proposições mais votadas no período</p>
           <div className="space-y-2">
