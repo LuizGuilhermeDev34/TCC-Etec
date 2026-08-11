@@ -55,6 +55,10 @@ const GLOSSARIO: Record<string, { nome: string; descricao: string }> = {
   CSSF:    { nome: "Comissão de Seguridade Social e Família", descricao: "Analisa proposições sobre saúde, previdência social, assistência social e direitos da família." },
   CTASP:   { nome: "Comissão de Trabalho e Serviço Público", descricao: "Analisa proposições sobre direitos trabalhistas, emprego, serviço público e previdência do servidor." },
   CINDRA:  { nome: "Comissão de Integração Nacional", descricao: "Analisa proposições sobre desenvolvimento regional, infraestrutura e integração nacional." },
+  CN:      { nome: "Congresso Nacional", descricao: "Sessão conjunta da Câmara dos Deputados e do Senado Federal — usada para votar Medidas Provisórias e outras matérias que exigem as duas Casas reunidas." },
+  CME:     { nome: "Comissão de Minas e Energia", descricao: "Analisa proposições sobre mineração, energia elétrica, petróleo e recursos energéticos." },
+  SGM:     { nome: "Secretaria-Geral da Mesa", descricao: "Órgão administrativo da Câmara responsável pelo registro e tramitação oficial das sessões e votações." },
+  CCOM:    { nome: "Comissão de Comunicação", descricao: "Analisa proposições sobre rádio, TV, telecomunicações e meios de comunicação em geral." },
 };
 
 function tipoColor(t: string) {
@@ -193,6 +197,116 @@ function VotacaoCard({ v }: { v: Votacao }) {
   );
 }
 
+// ── HUD de resumo das votações filtradas ────────────────────────────────────────
+
+function HudResumo({ votacoes, periodoLabel }: { votacoes: Votacao[]; periodoLabel: string }) {
+  const aprovadas = votacoes.filter((v) => v.aprovacao === 1).length;
+  const rejeitadas = votacoes.filter((v) => v.aprovacao === 0).length;
+  const total = votacoes.length;
+
+  // Mesma classificação de VotacaoCard: mérito = tem proposição identificada
+  // (enriquecida pelo backend via proposicoesAfetadas), procedural = não tem.
+  const merito = votacoes.filter((v) => v.proposicao_objeto);
+  const procedural = votacoes.filter((v) => !v.proposicao_objeto);
+  const meritoAprovadas = merito.filter((v) => v.aprovacao === 1).length;
+  const proceduralAprovadas = procedural.filter((v) => v.aprovacao === 1).length;
+
+  const propCount: Record<string, number> = {};
+  merito.forEach((v) => {
+    const nome = v.proposicao_objeto as string;
+    propCount[nome] = (propCount[nome] ?? 0) + 1;
+  });
+  const topProposicoes = Object.entries(propCount).sort((a, b) => b[1] - a[1]).slice(0, 5);
+
+  if (total === 0) return null;
+
+  return (
+    <div className="space-y-4">
+      <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+        <p className="mb-3 text-xs font-bold uppercase tracking-wide text-slate-400">Resumo — {periodoLabel}</p>
+        <div className="grid grid-cols-3 gap-2 text-center mb-4">
+          <div className="rounded-xl bg-slate-50 p-3">
+            <p className="text-2xl font-bold text-slate-800">{total}</p>
+            <p className="text-[10px] text-slate-400 mt-0.5">votações</p>
+          </div>
+          <div className="rounded-xl bg-green-50 p-3">
+            <p className="text-2xl font-bold text-green-600">{aprovadas}</p>
+            <p className="text-[10px] text-green-500 mt-0.5">aprovadas</p>
+          </div>
+          <div className="rounded-xl bg-red-50 p-3">
+            <p className="text-2xl font-bold text-red-500">{rejeitadas}</p>
+            <p className="text-[10px] text-red-400 mt-0.5">rejeitadas</p>
+          </div>
+        </div>
+
+        {(merito.length > 0 || procedural.length > 0) && (
+          <div className="space-y-3">
+            {merito.length > 0 && (
+              <div>
+                <div className="mb-1 flex items-center justify-between text-[10px] font-semibold uppercase tracking-wide text-slate-300">
+                  <span>Votações de mérito ({merito.length})</span>
+                  <span className="text-green-600">{Math.round((meritoAprovadas / merito.length) * 100)}%</span>
+                </div>
+                <div className="h-2 overflow-hidden rounded-full bg-slate-100">
+                  <motion.div
+                    className="h-full rounded-full bg-green-400"
+                    initial={{ width: 0 }}
+                    animate={{ width: `${Math.round((meritoAprovadas / merito.length) * 100)}%` }}
+                    transition={{ duration: 0.7, ease: "easeOut" }}
+                  />
+                </div>
+              </div>
+            )}
+            {procedural.length > 0 && (
+              <div>
+                <div className="mb-1 flex items-center justify-between text-[10px] font-semibold uppercase tracking-wide text-slate-300">
+                  <span>Despachos e procedurais ({procedural.length})</span>
+                  <span className="text-slate-500">{Math.round((proceduralAprovadas / procedural.length) * 100)}%</span>
+                </div>
+                <div className="h-2 overflow-hidden rounded-full bg-slate-100">
+                  <motion.div
+                    className="h-full rounded-full bg-slate-400"
+                    initial={{ width: 0 }}
+                    animate={{ width: `${Math.round((proceduralAprovadas / procedural.length) * 100)}%` }}
+                    transition={{ duration: 0.7, ease: "easeOut", delay: 0.1 }}
+                  />
+                </div>
+              </div>
+            )}
+            <p className="text-[10px] leading-relaxed text-slate-400">
+              Despachos e votos procedurais (parecer, requerimento) costumam ser aprovados quase sempre por serem trâmite administrativo — misturá-los às votações de mérito infla artificialmente a taxa de aprovação.
+            </p>
+          </div>
+        )}
+      </div>
+
+      {topProposicoes.length > 0 && (
+        <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+          <p className="mb-3 text-xs font-bold uppercase tracking-wide text-slate-400">Proposições mais votadas no período</p>
+          <div className="space-y-2">
+            {topProposicoes.map(([nome, count]) => (
+              <div key={nome}>
+                <div className="mb-1 flex items-center justify-between text-xs">
+                  <span className="font-semibold text-slate-700">{nome}</span>
+                  <span className="font-bold text-slate-600">{count}</span>
+                </div>
+                <div className="h-1.5 overflow-hidden rounded-full bg-slate-100">
+                  <motion.div
+                    className="h-full rounded-full bg-blue-400"
+                    initial={{ width: 0 }}
+                    animate={{ width: `${Math.round((count / topProposicoes[0][1]) * 100)}%` }}
+                    transition={{ duration: 0.6, ease: "easeOut" }}
+                  />
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Status badge ─────────────────────────────────────────────────────────────
 
 function statusStyle(status: string | undefined): string {
@@ -277,7 +391,7 @@ export function LeisPage() {
     const reqId = ++votReqId.current;
     if (!silent) setStatusVot("loading");
     setRefreshing(true);
-    api.camara.votacoes(100, buildDataInicio(mes, ano), buildDataFim(mes, ano))
+    api.camara.votacoes(100, buildDataInicio(mes, ano), buildDataFim(mes, ano), true)
       .then((d) => {
         if (reqId !== votReqId.current) return;
         setVotacoes(d);
@@ -486,30 +600,36 @@ export function LeisPage() {
             )}
 
             {statusVot === "success" && (
-              <>
-                <p className="mb-3 text-xs text-slate-400">
-                  {votacoes.length} votação(ões) em {MESES[votMes - 1]} {votAno} — clique em um card para ver o voto de cada partido
-                </p>
-                <motion.div variants={containerVariants} initial="hidden" animate="show" className="space-y-3">
-                  {votacoes.length === 0 && (
-                    <div className="py-12 text-center">
-                      <p className="text-sm font-medium text-slate-500">
-                        {votMes === currentMonth && votAno === currentYear
-                          ? "Nenhuma lei foi adicionada recentemente."
-                          : `Nenhuma votação encontrada para ${MESES[votMes - 1]} ${votAno}.`}
-                      </p>
-                      {votMes === currentMonth && votAno === currentYear && (
-                        <p className="mt-1 text-xs text-slate-400">
-                          A página atualiza automaticamente a cada 15 minutos.
+              <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+                <div className="lg:col-span-2">
+                  <p className="mb-3 text-xs text-slate-400">
+                    {votacoes.length} votação(ões) em {MESES[votMes - 1]} {votAno} — clique em um card para ver o voto de cada partido
+                  </p>
+                  <motion.div variants={containerVariants} initial="hidden" animate="show" className="space-y-3">
+                    {votacoes.length === 0 && (
+                      <div className="py-12 text-center">
+                        <p className="text-sm font-medium text-slate-500">
+                          {votMes === currentMonth && votAno === currentYear
+                            ? "Nenhuma lei foi adicionada recentemente."
+                            : `Nenhuma votação encontrada para ${MESES[votMes - 1]} ${votAno}.`}
                         </p>
-                      )}
-                    </div>
-                  )}
-                  {votacoes.map((v) => (
-                    <VotacaoCard key={v.id} v={v} />
-                  ))}
-                </motion.div>
-              </>
+                        {votMes === currentMonth && votAno === currentYear && (
+                          <p className="mt-1 text-xs text-slate-400">
+                            A página atualiza automaticamente a cada 15 minutos.
+                          </p>
+                        )}
+                      </div>
+                    )}
+                    {votacoes.map((v) => (
+                      <VotacaoCard key={v.id} v={v} />
+                    ))}
+                  </motion.div>
+                </div>
+
+                <div className="lg:col-span-1">
+                  <HudResumo votacoes={votacoes} periodoLabel={`${MESES[votMes - 1]} ${votAno}`} />
+                </div>
+              </div>
             )}
           </>
         )}

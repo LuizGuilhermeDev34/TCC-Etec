@@ -1,4 +1,5 @@
 import asyncio
+import re
 from typing import Any, Dict, List, Optional
 
 import httpx
@@ -14,7 +15,22 @@ from ..models.votacao import Votacao
 
 _cache = SimpleCache()
 _cache_live = SimpleCache(ttl_seconds=120)  # 2 min para dados que mudam com frequência
+# Votações são imutáveis — a proposição vinculada a uma votação de 2023 nunca
+# muda. TTL longo evita repetir o fan-out de enriquecimento a cada carregamento.
+_cache_votacao_proposicao = SimpleCache(ttl_seconds=60 * 60 * 24 * 30)
 _CAMARA_BASE = "https://dadosabertos.camara.leg.br/api/v2"
+
+# A Câmara às vezes embute "Sim: 87; Não: 301; Total: 388." no fim da descricao
+# de uma votação — redundante com o painel de voto por partido e confuso lado
+# a lado com ele (o total do painel conta abstenção/obstrução, esse não).
+_VOTOS_SUFFIX_RE = re.compile(
+    r"\s*Sim:\s*\d+;\s*N[ãa]o:\s*\d+;(\s*Absten[çc][ãa]o:\s*\d+;)?\s*Total:\s*\d+\.?",
+    re.IGNORECASE,
+)
+
+
+def _limpar_descricao(desc: str) -> str:
+    return _VOTOS_SUFFIX_RE.sub("", desc).strip()
 
 # Presidentes nacionais dos partidos (não expostos via API da Câmara)
 _PARTY_PRESIDENTS: Dict[str, Dict[str, str]] = {
@@ -284,7 +300,10 @@ async def get_proposicoes(ano: int = 2026, tipo: str = "", itens: int = 20) -> L
 
     payload = await _fetch_camara_json("/proposicoes", params=params)
     items = payload.get("dados", [])
-    proposicoes = [_to_proposicao(item) for item in items]
+    # Itens sem ementa (comum em tipos administrativos como DOC/OF) não têm
+    # conteúdo nenhum pra mostrar — filtra por ausência de conteúdo, não por
+    # tipo, pra não esconder um tipo legítimo que também tenha ementa.
+    proposicoes = [_to_proposicao(item) for item in items if (item.get("ementa") or "").strip()]
 
     # Enrich each proposition with its current status (batched to avoid rate limits)
     id_to_prop = {p.id: p for p in proposicoes}
@@ -316,7 +335,7 @@ def _to_votacao(data: Dict[str, Any]) -> Votacao:
         data_hora_registro=data.get("dataHoraRegistro", ""),
         sigla_orgao=data.get("siglaOrgao", ""),
         proposicao_objeto=data.get("proposicaoObjeto"),
-        descricao=data.get("descricao", ""),
+        descricao=_limpar_descricao(data.get("descricao", "")),
         aprovacao=int(data.get("aprovacao") or 0),
     )
 
@@ -775,10 +794,41 @@ async def get_votacao_votos(votacao_id: str) -> Dict[str, Any]:
     return result
 
 
+async def _fetch_votacao_proposicao(
+    client: httpx.AsyncClient,
+    votacao_id: str,
+) -> tuple[str, Optional[str]]:
+    """Busca o nome real da proposição afetada por uma votação (ex: 'PL 5005/2026'),
+    via proposicoesAfetadas em /votacoes/{id}. Retorna None quando a votação não
+    tem proposição vinculada (despacho processual, redação final etc) — nesse
+    caso o texto genérico da listagem prevalece."""
+    cached = _cache_votacao_proposicao.get(votacao_id)
+    if cached is not None:
+        return votacao_id, (cached or None)
+    try:
+        resp = await client.get(f"{_CAMARA_BASE}/votacoes/{votacao_id}", timeout=10.0)
+        if not resp.is_success:
+            return votacao_id, None
+        afetadas = resp.json().get("dados", {}).get("proposicoesAfetadas") or []
+        nome = None
+        if afetadas:
+            p = afetadas[0]
+            sigla, numero, ano = p.get("siglaTipo"), p.get("numero"), p.get("ano")
+            if sigla and numero and ano:
+                nome = f"{sigla} {numero}/{ano}"
+        _cache_votacao_proposicao.set(votacao_id, nome or "")
+        return votacao_id, nome
+    except Exception:
+        return votacao_id, None
+
+
 async def get_votacoes_recentes(
-    itens: int = 30, data_inicio: str | None = None, data_fim: str | None = None
+    itens: int = 30,
+    data_inicio: str | None = None,
+    data_fim: str | None = None,
+    enrich: bool = False,
 ) -> List[Votacao]:
-    cache_key = f"votacoes_recentes:{itens}:{data_inicio}:{data_fim}"
+    cache_key = f"votacoes_recentes:{itens}:{data_inicio}:{data_fim}:{enrich}"
     cached = _cache_live.get(cache_key)
     if cached is not None:
         return cached
@@ -792,5 +842,24 @@ async def get_votacoes_recentes(
     payload = await _fetch_camara_json("/votacoes", params=params)
     items = payload.get("dados", [])
     votacoes = [_to_votacao(item) for item in items]
+
+    if enrich:
+        id_to_votacao = {v.id: v for v in votacoes}
+        batch_size = 10
+        async with httpx.AsyncClient(timeout=12.0) as client:
+            for i in range(0, len(votacoes), batch_size):
+                batch = votacoes[i : i + batch_size]
+                results = await asyncio.gather(
+                    *[_fetch_votacao_proposicao(client, v.id) for v in batch],
+                    return_exceptions=True,
+                )
+                for result in results:
+                    if isinstance(result, tuple):
+                        vid, nome = result
+                        if nome and vid in id_to_votacao:
+                            id_to_votacao[vid].proposicao_objeto = nome
+                if i + batch_size < len(votacoes):
+                    await asyncio.sleep(0.2)
+
     _cache_live.set(cache_key, votacoes)
     return votacoes
