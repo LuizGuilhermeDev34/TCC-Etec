@@ -11,3 +11,4 @@ class Activity:
     date: str
     aprovacao: Optional[int] = field(default=None)
     sigla_orgao: Optional[str] = field(default=None)
+    votacao_id: Optional[str] = field(default=None)

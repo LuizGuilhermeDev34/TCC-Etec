@@ -1,8 +1,9 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { PageTransition } from "../components/PageTransition";
 import { LoadingSpinner } from "../components/LoadingSpinner";
 import { OfflineBanner } from "../components/OfflineBanner";
+import { VotoPartidoPanel } from "../components/VotoPartidoPanel";
 import { api } from "../services/api";
 import { containerVariants, slideInLeft } from "../animations";
 import type { Activity, ApiStatus } from "../types";
@@ -93,7 +94,9 @@ function fmtNow(d: Date) {
 // ── Card de atividade ─────────────────────────────────────────────────────────
 
 function ActivityCard({ a }: { a: Activity }) {
+  const [expanded, setExpanded] = useState(false);
   const isVot = a.type === "votacao";
+  const clickable = isVot && !!a.votacao_id;
   const approved = a.aprovacao === 1;
   const time = fmtTime(a.date);
   const date = fmtDate(a.date);
@@ -107,7 +110,13 @@ function ActivityCard({ a }: { a: Activity }) {
   const propSigla = isVot ? extractPropSigla(a.title, a.description) : null;
 
   return (
-    <motion.div variants={slideInLeft} className={`flex-1 rounded-xl border p-4 shadow-sm ${borderCls}`}>
+    <motion.div
+      variants={slideInLeft}
+      role={clickable ? "button" : undefined}
+      tabIndex={clickable ? 0 : undefined}
+      onClick={clickable ? () => setExpanded((e) => !e) : undefined}
+      onKeyDown={clickable ? (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setExpanded((v) => !v); } } : undefined}
+      className={`flex-1 rounded-xl border p-4 shadow-sm ${borderCls} ${clickable ? "cursor-pointer transition hover:shadow-md" : ""}`}>
       <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-2">
           {isVot ? (
@@ -154,6 +163,17 @@ function ActivityCard({ a }: { a: Activity }) {
       <p className={`mt-1 text-xs leading-relaxed line-clamp-2 ${isVot ? (approved ? "text-green-800" : "text-red-800") : "text-slate-500"}`}>
         {a.description || "Sem descrição disponível"}
       </p>
+
+      {clickable && (
+        <p className="mt-2 text-[10px] font-medium text-slate-400">
+          {expanded ? "▲ ocultar voto por partido" : "▼ ver voto por partido"}
+        </p>
+      )}
+      {expanded && a.votacao_id && (
+        <div onClick={(e) => e.stopPropagation()}>
+          <VotoPartidoPanel votacaoId={a.votacao_id} />
+        </div>
+      )}
     </motion.div>
   );
 }
@@ -166,6 +186,15 @@ function Sidebar({ activities }: { activities: Activity[] }) {
   const aprovadas = votacoes.filter((a) => a.aprovacao === 1).length;
   const rejeitadas = votacoes.filter((a) => a.aprovacao === 0).length;
   const total = votacoes.length;
+
+  // Votações "de mérito" (ligadas a uma proposição identificável, ex: PL, PEC)
+  // vs. despachos/procedurais (parecer, requerimento — sem sigla de proposição).
+  // Misturar as duas numa única taxa de aprovação é enganoso: despachos são
+  // aprovados quase sempre por serem trâmite administrativo, não decisão de mérito.
+  const merito = votacoes.filter((a) => extractPropSigla(a.title, a.description) !== null);
+  const procedural = votacoes.filter((a) => extractPropSigla(a.title, a.description) === null);
+  const meritoAprovadas = merito.filter((a) => a.aprovacao === 1).length;
+  const proceduralAprovadas = procedural.filter((a) => a.aprovacao === 1).length;
 
   const orgaos: Record<string, number> = {};
   votacoes.forEach((a) => {
@@ -194,21 +223,44 @@ function Sidebar({ activities }: { activities: Activity[] }) {
           </div>
         </div>
 
-        {total > 0 && (
-          <>
-            <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wide text-slate-300">Taxa de aprovação</p>
-            <div className="h-2 overflow-hidden rounded-full bg-slate-100">
-              <motion.div
-                className="h-full rounded-full bg-green-400"
-                initial={{ width: 0 }}
-                animate={{ width: `${Math.round((aprovadas / total) * 100)}%` }}
-                transition={{ duration: 0.7, ease: "easeOut" }}
-              />
-            </div>
-            <p className="mt-1 text-right text-[11px] font-semibold text-green-600">
-              {Math.round((aprovadas / total) * 100)}%
+        {(merito.length > 0 || procedural.length > 0) && (
+          <div className="space-y-3">
+            {merito.length > 0 && (
+              <div>
+                <div className="mb-1 flex items-center justify-between text-[10px] font-semibold uppercase tracking-wide text-slate-300">
+                  <span>Votações de mérito ({merito.length})</span>
+                  <span className="text-green-600">{Math.round((meritoAprovadas / merito.length) * 100)}%</span>
+                </div>
+                <div className="h-2 overflow-hidden rounded-full bg-slate-100">
+                  <motion.div
+                    className="h-full rounded-full bg-green-400"
+                    initial={{ width: 0 }}
+                    animate={{ width: `${Math.round((meritoAprovadas / merito.length) * 100)}%` }}
+                    transition={{ duration: 0.7, ease: "easeOut" }}
+                  />
+                </div>
+              </div>
+            )}
+            {procedural.length > 0 && (
+              <div>
+                <div className="mb-1 flex items-center justify-between text-[10px] font-semibold uppercase tracking-wide text-slate-300">
+                  <span>Despachos e procedurais ({procedural.length})</span>
+                  <span className="text-slate-500">{Math.round((proceduralAprovadas / procedural.length) * 100)}%</span>
+                </div>
+                <div className="h-2 overflow-hidden rounded-full bg-slate-100">
+                  <motion.div
+                    className="h-full rounded-full bg-slate-400"
+                    initial={{ width: 0 }}
+                    animate={{ width: `${Math.round((proceduralAprovadas / procedural.length) * 100)}%` }}
+                    transition={{ duration: 0.7, ease: "easeOut", delay: 0.1 }}
+                  />
+                </div>
+              </div>
+            )}
+            <p className="text-[10px] leading-relaxed text-slate-400">
+              Despachos e votos procedurais (parecer, requerimento) costumam ser aprovados quase sempre por serem trâmite administrativo — misturá-los às votações de mérito infla artificialmente a taxa de aprovação.
             </p>
-          </>
+          </div>
         )}
       </div>
 
@@ -275,17 +327,25 @@ export function AtividadesPage() {
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const [refreshing, setRefreshing] = useState(false);
 
+  // Um contador de requisição garante que só a resposta da chamada mais recente
+  // é aplicada, não importa se veio do efeito de montagem, do polling ou do botão
+  // "Atualizar" — mesmo padrão já usado em LeisPage para as votações.
+  const reqId = useRef(0);
+
   function load(silent = false) {
+    const id = ++reqId.current;
     if (!silent) setStatus("loading");
     setRefreshing(true);
     api.atividades.recentes()
       .then((d) => {
+        if (id !== reqId.current) return;
         setActivities(d);
         setStatus("success");
         setLastUpdated(new Date());
         setRefreshing(false);
       })
       .catch((e: Error) => {
+        if (id !== reqId.current) return;
         setStatus(e.message === "offline" ? "offline" : "error");
         setRefreshing(false);
       });

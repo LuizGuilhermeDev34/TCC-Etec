@@ -41,9 +41,10 @@ async def get_recent_activities() -> List[Activity]:
             title=v.proposicao_objeto or "Votação plenária",
             description=(desc[:200] + "...") if len(desc) > 200 else desc,
             actor=v.sigla_orgao or "Câmara",
-            date=v.data_hora_registro or v.data or "",
+            date=v.data or v.data_hora_registro or "",
             aprovacao=v.aprovacao,
             sigla_orgao=v.sigla_orgao,
+            votacao_id=v.id,
         ))
 
     for p in proposicoes:

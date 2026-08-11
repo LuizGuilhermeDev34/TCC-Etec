@@ -3,6 +3,7 @@ import { motion } from "framer-motion";
 import { PageTransition } from "../components/PageTransition";
 import { LoadingSpinner } from "../components/LoadingSpinner";
 import { OfflineBanner } from "../components/OfflineBanner";
+import { VotoPartidoPanel } from "../components/VotoPartidoPanel";
 import { api } from "../services/api";
 import { containerVariants, slideInLeft, cardHover } from "../animations";
 import type { ApiStatus, Proposicao, Votacao } from "../types";
@@ -68,22 +69,17 @@ function fmtDate(iso: string | undefined | null) {
   } catch { return iso; }
 }
 
-function fmtDateTime(iso: string) {
-  if (!iso) return "—";
-  try {
-    return new Date(iso).toLocaleString("pt-BR", {
-      day: "2-digit", month: "short", year: "numeric",
-      hour: "2-digit", minute: "2-digit",
-    });
-  } catch { return iso; }
-}
-
 function fmtTime(date: Date) {
   return date.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
 }
 
 function buildDataInicio(mes: number, ano: number) {
   return `${ano}-${String(mes).padStart(2, "0")}-01`;
+}
+
+function buildDataFim(mes: number, ano: number) {
+  const ultimoDia = new Date(ano, mes, 0).getDate();
+  return `${ano}-${String(mes).padStart(2, "0")}-${String(ultimoDia).padStart(2, "0")}`;
 }
 
 const MESES = [
@@ -120,6 +116,7 @@ function extractSigla(propObj: string): string {
 // ── Card de votação ───────────────────────────────────────────────────────────
 
 function VotacaoCard({ v }: { v: Votacao }) {
+  const [expanded, setExpanded] = useState(false);
   const approved = v.aprovacao === 1;
   const propSigla = v.proposicao_objeto ? extractSigla(v.proposicao_objeto) : null;
   const propInfo = propSigla ? GLOSSARIO[propSigla] : null;
@@ -138,7 +135,11 @@ function VotacaoCard({ v }: { v: Votacao }) {
   return (
     <motion.div
       variants={slideInLeft}
-      className={`rounded-xl border px-5 py-4 shadow-sm ${
+      role="button"
+      tabIndex={0}
+      onClick={() => setExpanded((e) => !e)}
+      onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setExpanded((v) => !v); } }}
+      className={`cursor-pointer rounded-xl border px-5 py-4 shadow-sm transition hover:shadow-md ${
         approved ? "border-green-300 bg-green-50" : "border-red-300 bg-red-50"
       }`}
     >
@@ -166,7 +167,7 @@ function VotacaoCard({ v }: { v: Votacao }) {
             {/* Órgão (ex: PLEN) — com tooltip */}
             <SiglaTooltip sigla={v.sigla_orgao} className={orgaoCls} />
 
-            <span className="text-xs text-slate-500">{fmtDateTime(v.data_hora_registro)}</span>
+            <span className="text-xs text-slate-500">{fmtDate(v.data)}</span>
           </div>
 
           <p className={`text-sm font-medium leading-relaxed ${approved ? "text-green-900" : "text-red-900"}`}>
@@ -182,12 +183,20 @@ function VotacaoCard({ v }: { v: Votacao }) {
           )}
         </div>
 
-        <span className={`flex-shrink-0 rounded-full px-3 py-1.5 text-xs font-bold text-white shadow-sm ${
-          approved ? "bg-green-500" : "bg-red-500"
-        }`}>
-          {approved ? "✓ Aprovado" : "✗ Rejeitado"}
-        </span>
+        <div className="flex flex-shrink-0 flex-col items-end gap-1.5">
+          <span className={`rounded-full px-3 py-1.5 text-xs font-bold text-white shadow-sm ${
+            approved ? "bg-green-500" : "bg-red-500"
+          }`}>
+            {approved ? "✓ Aprovado" : "✗ Rejeitado"}
+          </span>
+          <svg className={`h-3.5 w-3.5 text-slate-400 transition-transform ${expanded ? "rotate-180" : ""}`}
+            fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5" />
+          </svg>
+        </div>
       </div>
+
+      {expanded && <div onClick={(e) => e.stopPropagation()}><VotoPartidoPanel votacaoId={v.id} /></div>}
     </motion.div>
   );
 }
@@ -276,7 +285,7 @@ export function LeisPage() {
     const reqId = ++votReqId.current;
     if (!silent) setStatusVot("loading");
     setRefreshing(true);
-    api.camara.votacoes(100, buildDataInicio(mes, ano))
+    api.camara.votacoes(100, buildDataInicio(mes, ano), buildDataFim(mes, ano))
       .then((d) => {
         if (reqId !== votReqId.current) return;
         setVotacoes(d);

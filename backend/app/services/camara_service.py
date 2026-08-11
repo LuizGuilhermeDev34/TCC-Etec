@@ -778,8 +778,10 @@ async def get_votacao_votos(votacao_id: str) -> Dict[str, Any]:
     return result
 
 
-async def get_votacoes_recentes(itens: int = 30, data_inicio: str | None = None) -> List[Votacao]:
-    cache_key = f"votacoes_recentes:{itens}:{data_inicio}"
+async def get_votacoes_recentes(
+    itens: int = 30, data_inicio: str | None = None, data_fim: str | None = None
+) -> List[Votacao]:
+    cache_key = f"votacoes_recentes:{itens}:{data_inicio}:{data_fim}"
     cached = _cache_live.get(cache_key)
     if cached is not None:
         return cached
@@ -787,6 +789,8 @@ async def get_votacoes_recentes(itens: int = 30, data_inicio: str | None = None)
     params: Dict[str, Any] = {"itens": itens}
     if data_inicio:
         params["dataInicio"] = data_inicio
+    if data_fim:
+        params["dataFim"] = data_fim
 
     payload = await _fetch_camara_json("/votacoes", params=params)
     items = payload.get("dados", [])

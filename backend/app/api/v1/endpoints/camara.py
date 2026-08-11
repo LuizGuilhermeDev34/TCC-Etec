@@ -146,9 +146,10 @@ async def read_votacao_votos(votacao_id: str = Path(..., pattern=r"^[A-Za-z0-9-]
 async def read_votacoes(
     itens: int = Query(30, ge=1, le=100),
     data_inicio: str | None = Query(None),
+    data_fim: str | None = Query(None),
 ) -> List[VotacaoOut]:
     try:
-        votacoes = await get_votacoes_recentes(itens=itens, data_inicio=data_inicio)
+        votacoes = await get_votacoes_recentes(itens=itens, data_inicio=data_inicio, data_fim=data_fim)
     except HTTPStatusError as error:
         raise HTTPException(status_code=503, detail="Serviço da Câmara indisponível") from error
     return [VotacaoOut.model_validate(v) for v in votacoes]

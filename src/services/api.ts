@@ -49,9 +49,9 @@ export const api = {
       fetchJSON<PartidoGastos>(`/camara/partidos/${id}/gastos`),
     proposicoes: (ano = 2024, tipo = "PL", itens = 20) =>
       fetchJSON<Proposicao[]>(`/camara/proposicoes?ano=${ano}&tipo=${tipo}&itens=${itens}`),
-    votacoes: (itens = 30, dataInicio?: string) =>
+    votacoes: (itens = 30, dataInicio?: string, dataFim?: string) =>
       fetchJSON<Votacao[]>(
-        `/camara/votacoes?itens=${itens}${dataInicio ? `&data_inicio=${dataInicio}` : ""}`,
+        `/camara/votacoes?itens=${itens}${dataInicio ? `&data_inicio=${dataInicio}` : ""}${dataFim ? `&data_fim=${dataFim}` : ""}`,
       ),
     votacaoVotos: (id: string) =>
       fetchJSON<VotacaoVotos>(`/camara/votacoes/${id}/votos`),

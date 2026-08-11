@@ -12,21 +12,24 @@ interface Stats { deputados: number; senadores: number; partidos: number; }
 
 // ── Texto rotativo de stats ───────────────────────────────────────────────────
 
-const FRASES = [
-  { destaque: "594 políticos",    resto: " cadastrados e monitorados"     },
-  { destaque: "21 partidos",      resto: " políticos acompanhados"         },
-  { destaque: "Votações",         resto: " do plenário em tempo real"      },
-  { destaque: "Patrimônio",       resto: " declarado de cada mandatário"   },
-  { destaque: "Transparência",    resto: " que o brasileiro merece"        },
-];
+function getFrases(totalPoliticos: number, totalPartidos: number) {
+  return [
+    { destaque: `${totalPoliticos || "594"} políticos`, resto: " cadastrados e monitorados"     },
+    { destaque: `${totalPartidos || "21"} partidos`,     resto: " políticos acompanhados"         },
+    { destaque: "Votações",                              resto: " do plenário em tempo real"      },
+    { destaque: "Patrimônio",                             resto: " declarado de cada mandatário"   },
+    { destaque: "Transparência",                          resto: " que o brasileiro merece"        },
+  ];
+}
 
-function CyclingText() {
+function CyclingText({ totalPoliticos, totalPartidos }: { totalPoliticos: number; totalPartidos: number }) {
   const [idx, setIdx] = useState(0);
+  const frases = getFrases(totalPoliticos, totalPartidos);
   useEffect(() => {
-    const t = setInterval(() => setIdx((i) => (i + 1) % FRASES.length), 3200);
+    const t = setInterval(() => setIdx((i) => (i + 1) % frases.length), 3200);
     return () => clearInterval(t);
-  }, []);
-  const f = FRASES[idx];
+  }, [frases.length]);
+  const f = frases[idx];
   return (
     <div className="h-12 overflow-hidden">
       <AnimatePresence mode="wait">
@@ -98,7 +101,7 @@ function PoliticoCarousel({ deputados }: { deputados: Deputado[] }) {
 
 // ── Hero ──────────────────────────────────────────────────────────────────────
 
-function Hero({ deputados }: { deputados: Deputado[] }) {
+function Hero({ deputados, stats }: { deputados: Deputado[]; stats: Stats }) {
   return (
     <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-slate-900 via-blue-950 to-slate-800 px-8 py-12 mb-6 shadow-xl">
       {/* dot grid */}
@@ -123,7 +126,7 @@ function Hero({ deputados }: { deputados: Deputado[] }) {
             Democratização<br />de Dados
           </h1>
 
-          <CyclingText />
+          <CyclingText totalPoliticos={stats.deputados + stats.senadores} totalPartidos={stats.partidos} />
 
           <div className="mt-6 space-y-3 border-t border-white/10 pt-6">
             <p className="text-sm leading-relaxed text-slate-300">
@@ -468,7 +471,7 @@ export function HomePage() {
           <div className="mb-6"><OfflineBanner source="backend (localhost:8000)" /></div>
         )}
 
-        <Hero deputados={deputados} />
+        <Hero deputados={deputados} stats={stats} />
 
         <StatStrip stats={stats} activities={activities} status={status} />
 
