@@ -740,13 +740,10 @@ async def get_votacao_votos(votacao_id: str) -> Dict[str, Any]:
     if cached is not None:
         return cached
 
-    try:
-        payload = await _fetch_camara_json(
-            f"/votacoes/{votacao_id}/votos",
-            params={"itens": 513},
-        )
-    except Exception:
-        return {"total": 0, "partidos": []}
+    # O sub-endpoint /votos rejeita o parâmetro itens com 400 (diferente de
+    # /votacoes e /proposicoes, que o aceitam) — não filtrar aqui. Erros reais
+    # (ex: 503) devem propagar para o router, não virar um falso "sem votos".
+    payload = await _fetch_camara_json(f"/votacoes/{votacao_id}/votos")
 
     dados = payload.get("dados", [])
     partidos: Dict[str, Dict[str, int]] = {}

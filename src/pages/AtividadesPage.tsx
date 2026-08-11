@@ -6,6 +6,7 @@ import { OfflineBanner } from "../components/OfflineBanner";
 import { VotoPartidoPanel } from "../components/VotoPartidoPanel";
 import { api } from "../services/api";
 import { containerVariants, slideInLeft } from "../animations";
+import { fmtDate, fmtTime } from "../utils/dateFormat";
 import type { Activity, ApiStatus } from "../types";
 
 type Tab = "tudo" | "votacoes" | "proposicoes";
@@ -71,22 +72,6 @@ function extractPropSigla(title: string, desc: string): string | null {
   return null;
 }
 
-function fmtDate(iso: string) {
-  if (!iso) return "—";
-  try {
-    return new Date(iso).toLocaleDateString("pt-BR", { day: "2-digit", month: "short", year: "numeric" });
-  } catch { return iso; }
-}
-
-function fmtTime(iso: string) {
-  if (!iso) return "";
-  try {
-    const d = new Date(iso);
-    if (isNaN(d.getTime())) return "";
-    return d.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
-  } catch { return ""; }
-}
-
 function fmtNow(d: Date) {
   return d.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
 }
@@ -99,7 +84,7 @@ function ActivityCard({ a }: { a: Activity }) {
   const clickable = isVot && !!a.votacao_id;
   const approved = a.aprovacao === 1;
   const time = fmtTime(a.date);
-  const date = fmtDate(a.date);
+  const date = fmtDate(a.date, "short");
 
   const borderCls = isVot
     ? approved ? "border-green-200 bg-green-50" : "border-red-200 bg-red-50"

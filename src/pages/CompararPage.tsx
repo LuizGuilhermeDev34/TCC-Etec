@@ -13,7 +13,10 @@ function fmtBRL(value: number) {
 
 function calcIdade(dataNasc?: string | null) {
   if (!dataNasc) return null;
-  const d = new Date(dataNasc);
+  // Data pura (sem T) é interpretada como UTC — em fuso negativo pode
+  // deslocar o ano para nascimentos em 1º de janeiro. Forçar meia-noite local.
+  const withTime = dataNasc.includes("T") ? dataNasc : `${dataNasc}T00:00:00`;
+  const d = new Date(withTime);
   if (isNaN(d.getTime())) return null;
   return new Date().getFullYear() - d.getFullYear();
 }

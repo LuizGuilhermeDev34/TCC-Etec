@@ -6,6 +6,7 @@ import { OfflineBanner } from "../components/OfflineBanner";
 import { VotoPartidoPanel } from "../components/VotoPartidoPanel";
 import { api } from "../services/api";
 import { containerVariants, slideInLeft, cardHover } from "../animations";
+import { fmtDate } from "../utils/dateFormat";
 import type { ApiStatus, Proposicao, Votacao } from "../types";
 
 type Tab = "proposicoes" | "votacoes";
@@ -58,15 +59,6 @@ const GLOSSARIO: Record<string, { nome: string; descricao: string }> = {
 
 function tipoColor(t: string) {
   return TIPO_COLORS[t] ?? "bg-slate-50 text-slate-600 border-slate-200";
-}
-
-function fmtDate(iso: string | undefined | null) {
-  if (!iso) return "—";
-  try {
-    return new Date(iso).toLocaleDateString("pt-BR", {
-      day: "2-digit", month: "long", year: "numeric",
-    });
-  } catch { return iso; }
 }
 
 function fmtTime(date: Date) {
