@@ -29,9 +29,12 @@ router = APIRouter(prefix="/camara", tags=["camara"])
 
 
 @router.get("/deputados", response_model=List[DeputadoOut])
-async def read_deputados(legislatura: int = Query(57, ge=50)) -> List[DeputadoOut]:
+async def read_deputados(
+    legislatura: int = Query(57, ge=50),
+    uf: str | None = Query(None, min_length=2, max_length=2),
+) -> List[DeputadoOut]:
     try:
-        deputados = await get_deputados(legislatura=legislatura)
+        deputados = await get_deputados(legislatura=legislatura, uf=uf)
     except HTTPStatusError as error:
         raise HTTPException(status_code=503, detail="Serviço da Câmara indisponível") from error
     return [DeputadoOut.model_validate(d) for d in deputados]

@@ -18,6 +18,10 @@ _cache_live = SimpleCache(ttl_seconds=120)  # 2 min para dados que mudam com fre
 # Votações são imutáveis — a proposição vinculada a uma votação de 2023 nunca
 # muda. TTL longo evita repetir o fan-out de enriquecimento a cada carregamento.
 _cache_votacao_proposicao = SimpleCache(ttl_seconds=60 * 60 * 24 * 30)
+# A composição da Câmara muda raramente (troca de partido, afastamento) —
+# não precisa do TTL padrão de 5 min do _cache genérico. TTL próprio evita
+# repetir a chamada de 513 deputados a cada poucos minutos por UF pedida.
+_cache_deputados = SimpleCache(ttl_seconds=60 * 60 * 6)
 _CAMARA_BASE = "https://dadosabertos.camara.leg.br/api/v2"
 
 # A Câmara às vezes embute "Sim: 87; Não: 301; Total: 388." no fim da descricao
@@ -116,21 +120,24 @@ def _to_proposicao(data: Dict[str, Any]) -> Proposicao:
 _LEGISLATURA_ATUAL = 57
 
 
-async def get_deputados(legislatura: int = _LEGISLATURA_ATUAL) -> List[Deputado]:
-    cache_key = f"deputados:{legislatura}"
-    cached = _cache.get(cache_key)
+async def get_deputados(legislatura: int = _LEGISLATURA_ATUAL, uf: Optional[str] = None) -> List[Deputado]:
+    cache_key = f"deputados:{legislatura}:{uf}"
+    cached = _cache_deputados.get(cache_key)
     if cached is not None:
         return cached
 
-    # idLegislatura=57 (a legislatura corrente) devolve um recorte incompleto —
-    # confirmado ao vivo: 46 de 70 deputados de SP, 384 de 513 no total. Parece
-    # não refletir substituições por suplência corretamente. Sem o parâmetro,
-    # a Câmara devolve a composição atual de fato (513 linhas, sem duplicata
-    # nenhuma — testado). Só filtramos por idLegislatura quando é uma
+    # idLegislatura=57 (a legislatura corrente) devolve uma linha por período
+    # de filiação partidária — quem trocou de legenda aparece 2x. Isso consome
+    # o teto itens=513 com duplicatas antes de cobrir os 513 deputados reais:
+    # dedup por id sobrava com só 384 pessoas (SP: 46 de 70, confirmado ao
+    # vivo). Sem o parâmetro, a Câmara já devolve a composição atual sem
+    # duplicata nenhuma. Só filtramos por idLegislatura quando é uma
     # legislatura explicitamente diferente da corrente (consulta histórica).
     params: Dict[str, Any] = {"itens": 513}
     if legislatura != _LEGISLATURA_ATUAL:
         params["idLegislatura"] = legislatura
+    if uf:
+        params["siglaUf"] = uf.upper()
 
     payload = await _fetch_camara_json("/deputados", params=params)
     items = payload.get("dados", [])
@@ -144,7 +151,7 @@ async def get_deputados(legislatura: int = _LEGISLATURA_ATUAL) -> List[Deputado]
         by_id[dep.id] = dep
 
     deputados = sorted(by_id.values(), key=lambda d: d.nome)
-    _cache.set(cache_key, deputados)
+    _cache_deputados.set(cache_key, deputados)
     return deputados
 
 

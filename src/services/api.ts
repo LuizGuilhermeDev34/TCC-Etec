@@ -27,8 +27,8 @@ async function fetchJSON<T>(path: string, timeoutMs = 30_000): Promise<T> {
 
 export const api = {
   camara: {
-    deputados: (legislatura = 57) =>
-      fetchJSON<Deputado[]>(`/camara/deputados?legislatura=${legislatura}`),
+    deputados: (legislatura = 57, uf?: string) =>
+      fetchJSON<Deputado[]>(`/camara/deputados?legislatura=${legislatura}${uf ? `&uf=${uf}` : ""}`),
     deputadoById: (id: number) =>
       fetchJSON<DeputadoDetail>(`/camara/deputados/${id}`),
     deputadoVotacoes: (id: number) =>
