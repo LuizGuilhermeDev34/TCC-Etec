@@ -527,6 +527,16 @@ async def get_deputado_votacoes(deputado_id: int) -> List[DeputadoVotacao]:
     conhecidas na home).
     A Câmara rejeita dataInicio/dataFim cobrindo o ano inteiro numa chamada só
     (400) — busca feita por trimestre.
+
+    NÃO tem consumidor no frontend ainda. Motivo é custo de desenho, não
+    instabilidade da API: esta função varre o ano inteiro (até ~100 chamadas
+    de /votos) antes de devolver qualquer coisa, o que já levou 30+s e uma
+    falha de rede em teste real. A forma certa de expor isso na tela de
+    perfil não é buscar tudo de uma vez — é sob demanda e incremental, no
+    mesmo espírito do enriquecimento de PL/votações: as N votações mais
+    recentes em que o deputado votou, com cache, carregando mais só se o
+    usuário pedir. Essa função pode servir de base pra isso, mas precisa
+    dessa reformulação antes de virar uma seção na página.
     """
     cache_key = f"dep_votacoes:{deputado_id}"
     cached = _cache_votacoes_historico.get(cache_key)

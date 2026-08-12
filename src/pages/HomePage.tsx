@@ -163,15 +163,25 @@ function StatStrip({ stats, activities, status }: { stats: Stats; activities: Ac
   // são aprovados quase sempre por serem trâmite, e misturá-los aqui é o
   // mesmo problema de "100% de aprovação" que a separação em Leis e votos
   // já resolve. A home usa o mesmo critério, só que compacto.
-  const votacoesMerito = activities.filter((a) => a.type === "votacao" && a.merito);
+  const votacoesTotal = activities.filter((a) => a.type === "votacao");
+  const votacoesMerito = votacoesTotal.filter((a) => a.merito);
   const aprovadas = votacoesMerito.filter((a) => a.aprovacao === 1).length;
   const rejeitadas = votacoesMerito.filter((a) => a.aprovacao === 0).length;
+  // "0 e 0" sem contexto lê como "o site não carregou", não como "só houve
+  // trâmite processual no período" (o caso mais comum em recesso). Quando
+  // não há nenhuma votação de mérito mas existem votações no período, troca
+  // os dois blocos por algo que mostra o volume real em vez de dois zeros.
+  const semMeritoNoPeriodo = status === "success" && votacoesMerito.length === 0 && votacoesTotal.length > 0;
 
   const items = [
     { label: "Políticos",       value: stats.deputados + stats.senadores, sub: "Dep. + Senadores", color: "text-blue-600",   bg: "bg-blue-50",   icon: "👤" },
     { label: "Partidos",        value: stats.partidos,                    sub: "Registrados",       color: "text-violet-600", bg: "bg-violet-50", icon: "🏛" },
-    { label: "Aprovadas",       value: aprovadas,                         sub: "mérito · 30 dias",  color: "text-green-600",  bg: "bg-green-50",  icon: "✓"  },
-    { label: "Rejeitadas",      value: rejeitadas,                        sub: "mérito · 30 dias",  color: "text-red-500",    bg: "bg-red-50",    icon: "✗"  },
+    semMeritoNoPeriodo
+      ? { label: "Votações",     value: votacoesTotal.length, sub: "últ. 30 dias",         color: "text-slate-600",  bg: "bg-slate-50",  icon: "📋" }
+      : { label: "Aprovadas",    value: aprovadas,            sub: "mérito · 30 dias",      color: "text-green-600",  bg: "bg-green-50",  icon: "✓"  },
+    semMeritoNoPeriodo
+      ? { label: "De mérito",    value: 0,                    sub: "só trâmite no período", color: "text-slate-400",  bg: "bg-slate-50",  icon: "—"  }
+      : { label: "Rejeitadas",   value: rejeitadas,           sub: "mérito · 30 dias",      color: "text-red-500",    bg: "bg-red-50",    icon: "✗"  },
   ];
 
   return (
@@ -310,7 +320,7 @@ const APIS = [
       "Lista de todos os 513 deputados federais em exercício",
       "Proposições (PLs, PECs, Requerimentos) por deputado e por tipo",
       "Votações do plenário e comissões com resultado (aprovado/rejeitado)",
-      "Despesas do CEAP — verba de gabinete de cada deputado",
+      "Despesas do CEAP — verba de gabinete de cada deputado (ver Limitações conhecidas)",
       "Perfil detalhado: escolaridade, nascimento, gabinete, redes sociais",
       "Composição e liderança dos partidos",
     ],
@@ -426,7 +436,7 @@ function SobrePlataforma() {
       {/* Rodapé da seção */}
       <div className="mt-6 rounded-2xl border border-amber-100 bg-amber-50 px-6 py-4">
         <p className="text-xs leading-relaxed text-amber-800">
-          <span className="font-bold">Limitações conhecidas:</span> O patrimônio é baseado na declaração de 2022 (a mais recente disponível no TSE). Nem toda votação tem registro de voto individual — só votações nominais e não-unânimes têm voto por deputado; votações por unanimidade e a maioria das votações de comissão são registradas só pelo resultado agregado, sem essa quebra. Nenhum dado de vereadores está disponível — as 5.570 câmaras municipais não têm API unificada.
+          <span className="font-bold">Limitações conhecidas:</span> O patrimônio é baseado na declaração de 2022 (a mais recente disponível no TSE). Nem toda votação tem registro de voto individual — só votações nominais e não-unânimes têm voto por deputado; votações por unanimidade e a maioria das votações de comissão são registradas só pelo resultado agregado, sem essa quebra. As despesas de CEAP (verba de gabinete) por deputado estão indisponíveis no momento — a API oficial da Câmara está respondendo com sucesso, mas sem nenhum registro, para qualquer deputado e ano consultado; verificamos isso diretamente na fonte, não é uma falha da nossa aplicação. Nenhum dado de vereadores está disponível — as 5.570 câmaras municipais não têm API unificada.
         </p>
       </div>
     </section>
