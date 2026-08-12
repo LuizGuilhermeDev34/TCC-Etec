@@ -1,4 +1,4 @@
-import type { Activity, CompararResult, Deputado, DeputadoDetail, DeputadoDespesa, DeputadoEstadual, DeputadoVotacao, Partido, PartidoGastos, PartidoLideranca, PartidoVotacoesStats, Patrimonio, Proposicao, Senador, Votacao, VotacaoVotos } from "../types";
+import type { Activity, CompararResult, Deputado, DeputadoDetail, DeputadoDespesa, DeputadoEstadual, DeputadoVotacao, Partido, PartidoGastos, PartidoLideranca, PartidoVotacoesStats, Patrimonio, Proposicao, ProposicoesDeputado, Senador, Votacao, VotacaoVotos } from "../types";
 
 
 const BASE_URL = (import.meta.env.VITE_API_URL as string | undefined) ?? `/api/v1`;
@@ -34,7 +34,7 @@ export const api = {
     deputadoVotacoes: (id: number) =>
       fetchJSON<DeputadoVotacao[]>(`/camara/deputados/${id}/votacoes`),
     deputadoProposicoes: (id: number) =>
-      fetchJSON<Proposicao[]>(`/camara/deputados/${id}/proposicoes`),
+      fetchJSON<ProposicoesDeputado>(`/camara/deputados/${id}/proposicoes`),
     deputadoDespesas: (id: number, ano = 2025) =>
       fetchJSON<DeputadoDespesa[]>(`/camara/deputados/${id}/despesas?ano=${ano}`),
     partidos: () =>

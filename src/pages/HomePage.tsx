@@ -207,7 +207,7 @@ const FEATURES = [
       </svg>
     ),
     title: "Perfil Completo",
-    desc: "Biografia, patrimônio declarado, gastos CEAP, votações e todas as proposições de cada deputado.",
+    desc: "Biografia, patrimônio declarado, gastos CEAP e as proposições apresentadas por cada deputado.",
     to: "/politicos",
     color: "blue",
   },

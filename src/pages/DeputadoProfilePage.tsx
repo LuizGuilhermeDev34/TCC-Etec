@@ -7,7 +7,7 @@ import { OfflineBanner } from "../components/OfflineBanner";
 import { PatrimonioCard } from "../components/PatrimonioCard";
 import { api } from "../services/api";
 import { slideInLeft, containerVariants } from "../animations";
-import type { ApiStatus, DeputadoDetail, Proposicao } from "../types";
+import type { ApiStatus, DeputadoDespesa, DeputadoDetail, Proposicao } from "../types";
 
 const PARTY_COLORS: Record<string, string> = {
   PT: "bg-red-100 text-red-700 border-red-200",
@@ -51,7 +51,10 @@ const TIPO_COLORS: Record<string, string> = {
 };
 function tipoColor(tipo: string) { return TIPO_COLORS[tipo] ?? "bg-slate-50 text-slate-600 border-slate-200"; }
 
-// Subsídio mensal fixado pela Lei 13.752/2018
+// Subsídio mensal vigente desde 01/02/2025 (reajuste escalonado pelo Decreto
+// Legislativo 172/2022) — não a Lei 13.752/2018, que fixou um valor menor
+// (R$ 33.763,00) e ficou superada por reajustes posteriores.
+// Fonte: https://www2.camara.leg.br/transparencia/acesso-a-informacao/copy_of_perguntas-frequentes/subsidios
 const SALARIO_MENSAL = 46366.19;
 
 export function DeputadoProfilePage() {
@@ -61,7 +64,12 @@ export function DeputadoProfilePage() {
   const [deputado, setDeputado] = useState<DeputadoDetail | null>(null);
   const [statusDep, setStatusDep] = useState<ApiStatus>("loading");
   const [proposicoes, setProposicoes] = useState<Proposicao[]>([]);
+  const [totalProposicoes, setTotalProposicoes] = useState(0);
   const [statusProp, setStatusProp] = useState<ApiStatus>("loading");
+  const [tipoFiltro, setTipoFiltro] = useState("");
+  const [visibleCount, setVisibleCount] = useState(10);
+  const [despesas, setDespesas] = useState<DeputadoDespesa[]>([]);
+  const [statusDespesas, setStatusDespesas] = useState<ApiStatus>("loading");
 
   useEffect(() => {
     if (!id) return;
@@ -75,11 +83,30 @@ export function DeputadoProfilePage() {
 
     setStatusProp("loading");
     api.camara.deputadoProposicoes(nid)
-      .then((p) => { if (!cancelled) { setProposicoes(p); setStatusProp("success"); } })
+      .then((p) => { if (!cancelled) { setProposicoes(p.itens); setTotalProposicoes(p.total); setStatusProp("success"); } })
       .catch(() => { if (!cancelled) setStatusProp("error"); });
+
+    setStatusDespesas("loading");
+    api.camara.deputadoDespesas(nid)
+      .then((d) => { if (!cancelled) { setDespesas(d); setStatusDespesas("success"); } })
+      .catch(() => { if (!cancelled) setStatusDespesas("error"); });
 
     return () => { cancelled = true; };
   }, [id]);
+
+  const tiposDisponiveis = Array.from(new Set(proposicoes.map((p) => p.sigla_tipo))).sort();
+  const proposicoesFiltradas = tipoFiltro ? proposicoes.filter((p) => p.sigla_tipo === tipoFiltro) : proposicoes;
+  const proposicoesVisiveis = proposicoesFiltradas.slice(0, visibleCount);
+  const amostraProposicoes = totalProposicoes > proposicoes.length;
+
+  const gastosPorCategoria: Record<string, number> = {};
+  let gastosTotal = 0;
+  for (const d of despesas) {
+    if (d.valor_liquido <= 0) continue;
+    gastosPorCategoria[d.tipo_despesa] = (gastosPorCategoria[d.tipo_despesa] ?? 0) + d.valor_liquido;
+    gastosTotal += d.valor_liquido;
+  }
+  const categoriasOrdenadas = Object.entries(gastosPorCategoria).sort((a, b) => b[1] - a[1]);
 
   if (statusDep === "loading") {
     return (
@@ -220,16 +247,17 @@ export function DeputadoProfilePage() {
                   <p className="mt-1 text-[11px] text-emerald-600">≈ {formatMoney(SALARIO_MENSAL * 12)}/ano</p>
                 </div>
                 <p className="mt-2 text-[11px] leading-relaxed text-slate-400">
-                  Subsídio constitucional fixado pela{" "}
+                  Valor vigente desde 1º de fevereiro de 2025 (reajuste fixado pelo{" "}
+                  Decreto Legislativo 172/2022, escalonado até 2025), igual para todos os 513 deputados
+                  federais. Não inclui verbas indenizatórias.{" "}
                   <a
-                    href="https://www.planalto.gov.br/ccivil_03/_ato2015-2018/2018/lei/l13752.htm"
+                    href="https://www2.camara.leg.br/transparencia/acesso-a-informacao/copy_of_perguntas-frequentes/subsidios"
                     target="_blank"
                     rel="noopener noreferrer"
                     className="underline hover:text-slate-600 transition-colors"
                   >
-                    Lei 13.752/2018
+                    Fonte: Câmara dos Deputados
                   </a>
-                  , igual para todos os 513 deputados federais. Não inclui verbas indenizatórias.
                 </p>
               </SectionCard>
 
@@ -241,7 +269,7 @@ export function DeputadoProfilePage() {
 
             {/* ── PROPOSIÇÕES APRESENTADAS ── */}
             <SectionCard className="p-6">
-              <div className="mb-5 flex items-center gap-2">
+              <div className="mb-3 flex flex-wrap items-center gap-2">
                 <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-violet-50">
                   <svg className="h-4 w-4 text-violet-600" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z" />
@@ -251,12 +279,26 @@ export function DeputadoProfilePage() {
                   <h2 className="text-sm font-bold text-slate-800">Proposições Apresentadas</h2>
                   <p className="text-xs text-slate-400">Projetos de lei e requerimentos de autoria do deputado — mais recentes primeiro</p>
                 </div>
-                {statusProp === "success" && proposicoes.length > 0 && (
-                  <span className="ml-auto rounded-full bg-violet-100 px-2.5 py-0.5 text-xs font-bold text-violet-700">
-                    {proposicoes.length}
+                {statusProp === "success" && proposicoesFiltradas.length > 0 && (
+                  <span className="ml-auto rounded-full bg-violet-100 px-2.5 py-0.5 text-xs font-bold text-violet-700" title="Proposições carregadas nesta lista">
+                    {proposicoesFiltradas.length} carregada{proposicoesFiltradas.length !== 1 ? "s" : ""}
                   </span>
                 )}
               </div>
+
+              {statusProp === "success" && tiposDisponiveis.length > 1 && (
+                <div className="mb-4 flex items-center gap-2">
+                  <label className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">Tipo</label>
+                  <select
+                    value={tipoFiltro}
+                    onChange={(e) => { setTipoFiltro(e.target.value); setVisibleCount(10); }}
+                    className="h-8 rounded-lg border border-slate-200 bg-slate-50 px-2 text-xs text-slate-600 focus:outline-none"
+                  >
+                    <option value="">Todos os tipos</option>
+                    {tiposDisponiveis.map((t) => <option key={t} value={t}>{t}</option>)}
+                  </select>
+                </div>
+              )}
 
               {statusProp === "loading" && (
                 <div className="flex items-center gap-2 py-6 text-sm text-slate-400">
@@ -278,8 +320,8 @@ export function DeputadoProfilePage() {
 
               {statusProp === "success" && proposicoes.length > 0 && (
                 <>
-                  <motion.div variants={containerVariants} initial="hidden" animate="show" className="max-h-[520px] overflow-y-auto space-y-2 pr-1">
-                    {proposicoes.map((p) => (
+                  <motion.div variants={containerVariants} initial="hidden" animate="show" className="space-y-2">
+                    {proposicoesVisiveis.map((p) => (
                       <motion.div key={p.id} variants={slideInLeft}>
                         <div className="flex items-start gap-3 rounded-xl border border-slate-100 bg-slate-50 px-4 py-3 hover:border-violet-200 hover:bg-violet-50 transition-colors">
                           <span className={`mt-0.5 flex-shrink-0 rounded-md border px-2 py-0.5 text-[11px] font-bold ${tipoColor(p.sigla_tipo)}`}>
@@ -289,6 +331,11 @@ export function DeputadoProfilePage() {
                             <div className="flex items-center gap-2">
                               <span className="text-xs font-semibold text-slate-700">
                                 {p.numero}/{p.ano}
+                                {/* Sem o órgão, requerimentos de comissões diferentes com o mesmo
+                                    número parecem duplicatas — cada comissão numera a própria série. */}
+                                {p.orgao_situacao && (
+                                  <span className="ml-1 font-normal text-slate-400">· {p.orgao_situacao}</span>
+                                )}
                               </span>
                               {p.data_apresentacao && (
                                 <span className="ml-auto flex-shrink-0 text-[11px] text-slate-400">
@@ -311,7 +358,20 @@ export function DeputadoProfilePage() {
                       </motion.div>
                     ))}
                   </motion.div>
-                  <p className="mt-3 text-[11px] text-slate-400">
+
+                  {visibleCount < proposicoesFiltradas.length && (
+                    <button
+                      onClick={() => setVisibleCount((v) => v + 20)}
+                      className="mt-3 w-full rounded-lg border border-slate-200 bg-slate-50 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 transition-colors"
+                    >
+                      Ver mais ({proposicoesFiltradas.length - visibleCount} restantes nesta lista)
+                    </button>
+                  )}
+
+                  <p className="mt-3 text-[11px] leading-relaxed text-slate-400">
+                    {amostraProposicoes && (
+                      <>Lista carrega as {proposicoes.length} proposições mais recentes, de {totalProposicoes} no total. </>
+                    )}
                     Fonte:{" "}
                     <a
                       href={`https://www.camara.leg.br/deputados/${deputado?.id}/proposicoes`}
@@ -323,6 +383,62 @@ export function DeputadoProfilePage() {
                     </a>
                   </p>
                 </>
+              )}
+            </SectionCard>
+
+            {/* ── GASTOS CEAP ── */}
+            <SectionCard className="p-6">
+              <div className="mb-4 flex items-center gap-2">
+                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-amber-50">
+                  <svg className="h-4 w-4 text-amber-600" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 18.75a60.07 60.07 0 0 1 15.797 2.101c.727.198 1.453-.342 1.453-1.096V18.75M3.75 4.5v.75A.75.75 0 0 1 3 6h-.75m0 0v-.375c0-.621.504-1.125 1.125-1.125H20.25M2.25 6v9m18-10.5v.75c0 .414.336.75.75.75h.75m-1.5-1.5h.375c.621 0 1.125.504 1.125 1.125v9.75c0 .621-.504 1.125-1.125 1.125h-.375m1.5-1.5H21a.75.75 0 0 0-.75.75v.75m0 0H3.75m0 0h-.375a1.125 1.125 0 0 1-1.125-1.125V15m1.5 1.5v-.75A.75.75 0 0 0 3 15h-.75M15 10.5a3 3 0 1 1-6 0 3 3 0 0 1 6 0Zm3 0h.008v.008H18V10.5Zm-12 0h.008v.008H6V10.5Z" />
+                  </svg>
+                </div>
+                <h2 className="text-sm font-bold text-slate-800">Gastos CEAP</h2>
+                <span className="ml-auto rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[10px] text-slate-400">2025</span>
+              </div>
+
+              {statusDespesas === "loading" && (
+                <div className="flex items-center gap-2 py-6 text-sm text-slate-400">
+                  <svg className="h-4 w-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                  </svg>
+                  Buscando despesas...
+                </div>
+              )}
+              {statusDespesas === "error" && (
+                <p className="py-4 text-sm text-slate-400">Não foi possível carregar os gastos CEAP.</p>
+              )}
+              {statusDespesas === "success" && despesas.length === 0 && (
+                <p className="py-4 text-sm text-slate-400">
+                  Nenhuma despesa CEAP disponível no momento para este período — a Câmara não retornou registros nesta consulta.
+                </p>
+              )}
+              {statusDespesas === "success" && despesas.length > 0 && (
+                <div className="space-y-4">
+                  <div className="inline-flex items-baseline gap-2 rounded-xl border border-slate-100 bg-slate-50 px-4 py-3">
+                    <span className="text-xs text-slate-500">Total no ano:</span>
+                    <span className="text-2xl font-bold text-amber-700">{formatMoney(gastosTotal)}</span>
+                  </div>
+                  <div className="space-y-2">
+                    {categoriasOrdenadas.slice(0, 6).map(([categoria, valor]) => (
+                      <div key={categoria}>
+                        <div className="mb-1 flex items-center justify-between gap-2 text-xs">
+                          <span className="truncate text-slate-600" title={categoria}>{categoria}</span>
+                          <span className="flex-shrink-0 font-semibold text-slate-700">{formatMoney(valor)}</span>
+                        </div>
+                        <div className="h-1.5 overflow-hidden rounded-full bg-slate-100">
+                          <div
+                            className="h-full rounded-full bg-amber-400"
+                            style={{ width: `${(valor / categoriasOrdenadas[0][1]) * 100}%` }}
+                          />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  <p className="text-[11px] text-slate-400">Fonte: Câmara dos Deputados — Dados Abertos (CEAP)</p>
+                </div>
               )}
             </SectionCard>
 
@@ -338,16 +454,17 @@ export function DeputadoProfilePage() {
                   Dados Pessoais
                 </h2>
                 <div className="space-y-0">
+                  {/* Campo em branco sugere dado faltando — esconde a linha em vez de "—" */}
                   {[
                     { label: "Nome civil", value: deputado.nome_civil },
                     { label: "Nascimento", value: formatDate(deputado.data_nascimento) },
                     { label: "Naturalidade", value: [deputado.municipio_nascimento, deputado.uf_nascimento].filter(Boolean).join(" / ") || null },
                     { label: "Escolaridade", value: deputado.escolaridade },
                     { label: "Sexo", value: deputado.sexo === "M" ? "Masculino" : deputado.sexo === "F" ? "Feminino" : deputado.sexo },
-                  ].map(({ label, value }) => (
+                  ].filter(({ value }) => Boolean(value)).map(({ label, value }) => (
                     <div key={label} className="flex items-start gap-3 border-b border-slate-50 py-2.5 last:border-0">
                       <span className="w-32 flex-shrink-0 text-[11px] font-semibold uppercase tracking-wide text-slate-400 pt-0.5">{label}</span>
-                      <span className="text-sm text-slate-700">{value || "—"}</span>
+                      <span className="text-sm text-slate-700">{value}</span>
                     </div>
                   ))}
                 </div>
@@ -377,10 +494,10 @@ export function DeputadoProfilePage() {
                       rows.push({ label: "Telefone", value: deputado.gabinete.telefone });
                     }
                     return rows;
-                  })().map(({ label, value }) => (
+                  })().filter(({ value }) => Boolean(value)).map(({ label, value }) => (
                     <div key={label} className="flex items-start gap-3 border-b border-slate-50 py-2.5 last:border-0">
                       <span className="w-32 flex-shrink-0 text-[11px] font-semibold uppercase tracking-wide text-slate-400 pt-0.5">{label}</span>
-                      <span className="text-sm text-slate-700">{value || "—"}</span>
+                      <span className="text-sm text-slate-700">{value}</span>
                     </div>
                   ))}
                 </div>

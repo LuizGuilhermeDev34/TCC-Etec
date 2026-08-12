@@ -224,4 +224,9 @@ export interface CompararResult {
   b: CompararDeputado;
 }
 
+export interface ProposicoesDeputado {
+  itens: Proposicao[];
+  total: number;
+}
+
 export type ApiStatus = "idle" | "loading" | "success" | "error" | "offline";
