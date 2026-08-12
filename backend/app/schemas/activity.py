@@ -11,5 +11,6 @@ class ActivityOut(BaseModel):
     aprovacao: Optional[int] = None
     sigla_orgao: Optional[str] = None
     votacao_id: Optional[str] = None
+    merito: bool = False
 
     model_config = {"from_attributes": True}

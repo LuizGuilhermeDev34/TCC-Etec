@@ -17,9 +17,12 @@ async def get_recent_activities() -> List[Activity]:
 
     ano_atual = datetime.now().year
     data_inicio = (datetime.now() - timedelta(days=30)).strftime("%Y-%m-%d")
+    # dataFim da Câmara é quase-exclusivo do próprio dia final (ver
+    # buildDataFim no front) — usar amanhã garante que hoje entra por inteiro.
+    data_fim = (datetime.now() + timedelta(days=1)).strftime("%Y-%m-%d")
 
     votacoes_result, proposicoes_result = await asyncio.gather(
-        get_votacoes_recentes(itens=30, data_inicio=data_inicio),
+        get_votacoes_recentes(itens=100, data_inicio=data_inicio, data_fim=data_fim),
         get_proposicoes(ano=ano_atual, tipo="", itens=12),
         return_exceptions=True,
     )
@@ -34,7 +37,10 @@ async def get_recent_activities() -> List[Activity]:
         key=lambda v: v.data_hora_registro or v.data or "",
         reverse=True,
     )
-    for v in votacoes_sorted[:20]:
+    # Sem corte artificial em 20 — itens=100 já limita a chamada, e um corte
+    # menor aqui inflava a contagem de "aprovadas" da home (sempre os 20 mais
+    # recentes, não uma amostra representativa dos últimos 30 dias).
+    for v in votacoes_sorted:
         desc = v.descricao or ""
         activities.append(Activity(
             type="votacao",
@@ -45,6 +51,7 @@ async def get_recent_activities() -> List[Activity]:
             aprovacao=v.aprovacao,
             sigla_orgao=v.sigla_orgao,
             votacao_id=v.id,
+            merito=v.merito,
         ))
 
     for p in proposicoes:

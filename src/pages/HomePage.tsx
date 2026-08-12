@@ -159,15 +159,19 @@ function Hero({ deputados, stats }: { deputados: Deputado[]; stats: Stats }) {
 // ── Stat strip ────────────────────────────────────────────────────────────────
 
 function StatStrip({ stats, activities, status }: { stats: Stats; activities: Activity[]; status: ApiStatus }) {
-  const votacoes = activities.filter((a) => a.type === "votacao");
-  const aprovadas = votacoes.filter((a) => a.aprovacao === 1).length;
-  const rejeitadas = votacoes.filter((a) => a.aprovacao === 0).length;
+  // Só conta votações de mérito (com placar real) — despachos e requerimentos
+  // são aprovados quase sempre por serem trâmite, e misturá-los aqui é o
+  // mesmo problema de "100% de aprovação" que a separação em Leis e votos
+  // já resolve. A home usa o mesmo critério, só que compacto.
+  const votacoesMerito = activities.filter((a) => a.type === "votacao" && a.merito);
+  const aprovadas = votacoesMerito.filter((a) => a.aprovacao === 1).length;
+  const rejeitadas = votacoesMerito.filter((a) => a.aprovacao === 0).length;
 
   const items = [
     { label: "Políticos",       value: stats.deputados + stats.senadores, sub: "Dep. + Senadores", color: "text-blue-600",   bg: "bg-blue-50",   icon: "👤" },
     { label: "Partidos",        value: stats.partidos,                    sub: "Registrados",       color: "text-violet-600", bg: "bg-violet-50", icon: "🏛" },
-    { label: "Aprovadas",       value: aprovadas,                         sub: "últ. 30 dias",      color: "text-green-600",  bg: "bg-green-50",  icon: "✓"  },
-    { label: "Rejeitadas",      value: rejeitadas,                        sub: "últ. 30 dias",      color: "text-red-500",    bg: "bg-red-50",    icon: "✗"  },
+    { label: "Aprovadas",       value: aprovadas,                         sub: "mérito · 30 dias",  color: "text-green-600",  bg: "bg-green-50",  icon: "✓"  },
+    { label: "Rejeitadas",      value: rejeitadas,                        sub: "mérito · 30 dias",  color: "text-red-500",    bg: "bg-red-50",    icon: "✗"  },
   ];
 
   return (
@@ -422,7 +426,7 @@ function SobrePlataforma() {
       {/* Rodapé da seção */}
       <div className="mt-6 rounded-2xl border border-amber-100 bg-amber-50 px-6 py-4">
         <p className="text-xs leading-relaxed text-amber-800">
-          <span className="font-bold">Limitações conhecidas:</span> O patrimônio é baseado na declaração de 2022 (a mais recente disponível no TSE). Votações individuais de deputados têm um atraso de publicação de vários meses na API oficial. Nenhum dado de vereadores está disponível — as 5.570 câmaras municipais não têm API unificada.
+          <span className="font-bold">Limitações conhecidas:</span> O patrimônio é baseado na declaração de 2022 (a mais recente disponível no TSE). Nem toda votação tem registro de voto individual — só votações nominais e não-unânimes têm voto por deputado; votações por unanimidade e a maioria das votações de comissão são registradas só pelo resultado agregado, sem essa quebra. Nenhum dado de vereadores está disponível — as 5.570 câmaras municipais não têm API unificada.
         </p>
       </div>
     </section>

@@ -83,6 +83,7 @@ export interface Activity {
   aprovacao?: number;
   sigla_orgao?: string;
   votacao_id?: string;
+  merito?: boolean;
 }
 
 export interface PartidoLider {
