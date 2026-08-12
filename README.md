@@ -49,7 +49,6 @@ Os dados sobre políticos brasileiros são públicos por lei — mas os sites of
 | API do Senado Federal | Lista de senadores, votações, fotos individuais |
 | TSE — Tribunal Superior Eleitoral | Patrimônio declarado por candidato (eleições 2022), bens por categoria |
 | Wikipedia REST API | Biografias resumidas, fotos de perfil, popularidade por pageviews |
-| Assembleias Legislativas Estaduais | Deputados estaduais em exercício por UF |
 
 ---
 

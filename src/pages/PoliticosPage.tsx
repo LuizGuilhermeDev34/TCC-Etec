@@ -6,9 +6,15 @@ import { LoadingSpinner } from "../components/LoadingSpinner";
 import { OfflineBanner } from "../components/OfflineBanner";
 import { api } from "../services/api";
 import { containerVariants, slideInLeft, cardHover } from "../animations";
-import type { ApiStatus, Deputado, DeputadoEstadual, Senador } from "../types";
+import type { ApiStatus, Deputado, Senador } from "../types";
 
-type Tab = "deputados" | "senadores" | "estaduais";
+type Tab = "deputados" | "senadores";
+
+const UFS = [
+  "AC", "AL", "AP", "AM", "BA", "CE", "DF", "ES", "GO", "MA", "MT", "MS",
+  "MG", "PA", "PB", "PR", "PE", "PI", "RJ", "RN", "RS", "RO", "RR", "SC",
+  "SP", "SE", "TO",
+];
 
 const PARTY_COLORS: Record<string, string> = {
   PT: "bg-red-100 text-red-700",
@@ -126,51 +132,6 @@ function SenadorCard({ s }: { s: Senador }) {
   );
 }
 
-function EstadualCard({ d }: { d: DeputadoEstadual }) {
-  return (
-    <motion.div variants={slideInLeft} whileHover={cardHover}>
-      <Link
-        to={`/politicos/estadual/${d.id}`}
-        className="block rounded-lg border border-slate-200 bg-white p-4 shadow-sm hover:border-blue-200 transition-colors"
-      >
-        <div className="flex items-start gap-3">
-          {d.url_foto ? (
-            <img
-              src={d.url_foto}
-              alt={d.nome}
-              className="h-12 w-12 flex-shrink-0 rounded-full object-cover ring-2 ring-slate-100"
-              onError={(e) => { (e.target as HTMLImageElement).className = "hidden"; }}
-            />
-          ) : (
-            <div className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-full bg-violet-50 text-violet-400">
-              <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 6a3.75 3.75 0 1 1-7.5 0 3.75 3.75 0 0 1 7.5 0ZM4.501 20.118a7.5 7.5 0 0 1 14.998 0" />
-              </svg>
-            </div>
-          )}
-          <div className="min-w-0 flex-1">
-            <p className="truncate font-semibold text-slate-900">{d.nome}</p>
-            <p className="text-xs text-slate-500">Deputado Estadual · {d.uf}</p>
-            <div className="mt-1.5 flex items-center gap-1.5">
-              <span className={`rounded px-1.5 py-0.5 text-[11px] font-semibold ${partyColor(d.partido)}`}>
-                {d.partido}
-              </span>
-              <span className="text-xs text-slate-400">ALESP</span>
-            </div>
-          </div>
-          <svg className="h-4 w-4 flex-shrink-0 self-center text-slate-300" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" d="m8.25 4.5 7.5 7.5-7.5 7.5" />
-          </svg>
-        </div>
-        <div className="mt-3 flex items-center justify-between border-t border-slate-100 pt-2.5 text-xs text-slate-500">
-          <span>Mandato <span className="font-semibold text-slate-700">{d.mandato}</span></span>
-          <span className="text-blue-500 font-medium">Ver perfil →</span>
-        </div>
-      </Link>
-    </motion.div>
-  );
-}
-
 export function PoliticosPage() {
   const navigationType = useNavigationType();
 
@@ -193,12 +154,16 @@ export function PoliticosPage() {
     setQuery_(q);
   }
 
+  const [uf, setUf_] = useState<string>(() => sessionStorage.getItem("politicos_uf") ?? "SP");
+  function setUf(u: string) {
+    sessionStorage.setItem("politicos_uf", u);
+    setUf_(u);
+  }
+
   const [deputados, setDeputados] = useState<Deputado[]>([]);
   const [senadores, setSenadores] = useState<Senador[]>([]);
-  const [estaduais, setEstaduais] = useState<DeputadoEstadual[]>([]);
   const [statusDep, setStatusDep] = useState<ApiStatus>("idle");
   const [statusSen, setStatusSen] = useState<ApiStatus>("idle");
-  const [statusEst, setStatusEst] = useState<ApiStatus>("idle");
 
   // Guarda o Y a restaurar; aplicado só depois que a lista carregar
   const pendingScroll = useRef<number | null>(null);
@@ -212,7 +177,7 @@ export function PoliticosPage() {
   }, [navigationType]);
 
   // Dispara quando a aba ativa termina de carregar
-  const activeStatus = tab === "deputados" ? statusDep : tab === "senadores" ? statusSen : statusEst;
+  const activeStatus = tab === "deputados" ? statusDep : statusSen;
   useEffect(() => {
     if (activeStatus === "success" && pendingScroll.current !== null) {
       const y = pendingScroll.current;
@@ -223,9 +188,9 @@ export function PoliticosPage() {
 
   useEffect(() => {
     setStatusDep("loading");
-    api.camara.deputados().then((d) => { setDeputados(d); setStatusDep("success"); })
+    api.camara.deputados(57, uf).then((d) => { setDeputados(d); setStatusDep("success"); })
       .catch((e: Error) => setStatusDep(e.message === "offline" ? "offline" : "error"));
-  }, []);
+  }, [uf]);
 
   useEffect(() => {
     if (tab !== "senadores" || senadores.length > 0) return;
@@ -236,27 +201,15 @@ export function PoliticosPage() {
     return () => { cancelled = true; };
   }, [tab, senadores.length]);
 
-  useEffect(() => {
-    if (tab !== "estaduais" || estaduais.length > 0) return;
-    let cancelled = false;
-    setStatusEst("loading");
-    api.estaduais.deputados("SP").then((d) => { if (!cancelled) { setEstaduais(d); setStatusEst("success"); } })
-      .catch((e: Error) => { if (!cancelled) setStatusEst(e.message === "offline" ? "offline" : "error"); });
-    return () => { cancelled = true; };
-  }, [tab, estaduais.length]);
-
   const q = query.toLowerCase();
   const filteredDep = deputados.filter(
-    (d) => d.sigla_uf === "SP" && (d.nome.toLowerCase().includes(q) || d.sigla_partido.toLowerCase().includes(q)),
+    (d) => d.nome.toLowerCase().includes(q) || d.sigla_partido.toLowerCase().includes(q),
   );
   const filteredSen = senadores.filter(
     (s) => s.nome.toLowerCase().includes(q) || s.partido.toLowerCase().includes(q) || s.uf.toLowerCase().includes(q),
   );
-  const filteredEst = estaduais.filter(
-    (d) => d.nome.toLowerCase().includes(q) || d.partido.toLowerCase().includes(q),
-  );
 
-  const activeCount = tab === "deputados" ? filteredDep.length : tab === "senadores" ? filteredSen.length : filteredEst.length;
+  const activeCount = tab === "deputados" ? filteredDep.length : filteredSen.length;
 
   return (
     <PageTransition direction="up">
@@ -274,9 +227,8 @@ export function PoliticosPage() {
           </div>
           <p className="mb-5 text-sm text-slate-500">
             Explore informações sobre{" "}
-            <span className="font-medium text-blue-600">deputados federais</span>,{" "}
-            <span className="font-medium text-blue-600">senadores</span> e{" "}
-            <span className="font-medium text-blue-600">deputados estaduais</span>
+            <span className="font-medium text-blue-600">deputados federais</span> e{" "}
+            <span className="font-medium text-blue-600">senadores</span>
           </p>
         </motion.div>
 
@@ -285,9 +237,9 @@ export function PoliticosPage() {
           initial={{ opacity: 0, x: -20 }}
           animate={{ opacity: 1, x: 0 }}
           transition={{ duration: 0.35, delay: 0.1 }}
-          className="mb-5 rounded-lg border border-slate-200 bg-white p-4 shadow-sm"
+          className="mb-5 flex flex-col gap-3 rounded-lg border border-slate-200 bg-white p-4 shadow-sm sm:flex-row"
         >
-          <div className="relative">
+          <div className="relative flex-1">
             <svg className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z" />
             </svg>
@@ -299,16 +251,24 @@ export function PoliticosPage() {
               className="h-9 w-full rounded-lg border border-slate-200 bg-slate-50 pl-8 pr-3 text-sm text-slate-700 placeholder-slate-400 focus:border-blue-400 focus:outline-none focus:ring-1 focus:ring-blue-300"
             />
           </div>
+          {tab === "deputados" && (
+            <select
+              value={uf}
+              onChange={(e) => setUf(e.target.value)}
+              className="h-9 rounded-lg border border-slate-200 bg-slate-50 px-3 text-sm text-slate-700 focus:border-blue-400 focus:outline-none focus:ring-1 focus:ring-blue-300"
+            >
+              {UFS.map((u) => <option key={u} value={u}>{u}</option>)}
+            </select>
+          )}
         </motion.div>
 
         {/* Tabs */}
         <div className="mb-4 flex items-center justify-between">
           <div className="flex gap-4">
-            {(["deputados", "senadores", "estaduais"] as Tab[]).map((t) => {
+            {(["deputados", "senadores"] as Tab[]).map((t) => {
               const labels: Record<Tab, string> = {
-                deputados: `Dep. Federais SP${filteredDep.length > 0 ? ` (${filteredDep.length})` : ""}`,
+                deputados: `Dep. Federais ${uf}${filteredDep.length > 0 ? ` (${filteredDep.length})` : ""}`,
                 senadores: `Senadores${senadores.length > 0 ? ` (${senadores.length})` : ""}`,
-                estaduais: `Dep. Estaduais SP${estaduais.length > 0 ? ` (${estaduais.length})` : ""}`,
               };
               return (
                 <button
@@ -332,7 +292,7 @@ export function PoliticosPage() {
 
         {activeStatus === "loading" && <LoadingSpinner message={`Carregando...`} />}
         {(activeStatus === "offline" || activeStatus === "error") && (
-          <OfflineBanner source={tab === "deputados" ? "API da Câmara" : tab === "senadores" ? "API do Senado" : "API Estadual"} />
+          <OfflineBanner source={tab === "deputados" ? "API da Câmara" : "API do Senado"} />
         )}
 
         {activeStatus === "success" && (
@@ -345,19 +305,12 @@ export function PoliticosPage() {
           >
             {tab === "deputados" && filteredDep.map((d) => <DeputadoCard key={d.id} d={d} />)}
             {tab === "senadores" && filteredSen.map((s) => <SenadorCard key={s.codigo} s={s} />)}
-            {tab === "estaduais" && filteredEst.map((d) => <EstadualCard key={d.id} d={d} />)}
             {activeCount === 0 && query && (
               <p className="col-span-3 py-10 text-center text-sm text-slate-400">
                 Nenhum resultado para "{query}"
               </p>
             )}
           </motion.div>
-        )}
-
-        {tab === "estaduais" && activeStatus === "success" && (
-          <p className="mt-4 text-center text-xs text-slate-400">
-            Dados parciais da ALESP — mandato 2023-2027. A ALESP não possui API pública.
-          </p>
         )}
       </main>
     </PageTransition>

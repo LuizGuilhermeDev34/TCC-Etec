@@ -341,16 +341,6 @@ const APIS = [
       "Popularidade medida por visualizações de página (pageviews)",
     ],
   },
-  {
-    nome: "Assembleias Legislativas Estaduais",
-    url: "APIs individuais por estado (SP, RJ, MG…)",
-    cor: "bg-teal-600",
-    usos: [
-      "Deputados estaduais em exercício por UF",
-      "Perfil e mandato de cada deputado estadual",
-      "Cada assembleia tem formato próprio — sem padronização nacional",
-    ],
-  },
 ];
 
 function SobrePlataforma() {

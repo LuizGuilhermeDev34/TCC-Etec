@@ -5,7 +5,6 @@ import { Layout } from "./components/Layout";
 import { HomePage } from "./pages/HomePage";
 import { PoliticosPage } from "./pages/PoliticosPage";
 import { DeputadoProfilePage } from "./pages/DeputadoProfilePage";
-import { DeputadoEstadualProfilePage } from "./pages/DeputadoEstadualProfilePage";
 import { SenadorProfilePage } from "./pages/SenadorProfilePage";
 import { PartidosPage } from "./pages/PartidosPage";
 import { PartidoProfilePage } from "./pages/PartidoProfilePage";
@@ -36,7 +35,10 @@ function AppRoutes() {
           <Route path="/" element={<HomePage />} />
           <Route path="/politicos" element={<PoliticosPage />} />
           <Route path="/politicos/deputado/:id" element={<DeputadoProfilePage />} />
-          <Route path="/politicos/estadual/:id" element={<DeputadoEstadualProfilePage />} />
+          {/* Escopo do TCC é federal (Câmara, Senado, TSE) — estaduais foi
+              descartado. DeputadoEstadualProfilePage.tsx e o backend seguem no
+              repo (não roteados), caso o grupo retome depois da banca. */}
+          <Route path="/politicos/estadual/:id" element={<Navigate to="/politicos" replace />} />
           <Route path="/politicos/senador/:codigo" element={<SenadorProfilePage />} />
           <Route path="/partidos" element={<PartidosPage />} />
           <Route path="/partidos/:id" element={<PartidoProfilePage />} />
