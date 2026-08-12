@@ -7,6 +7,7 @@ import { VotoPartidoPanel } from "../components/VotoPartidoPanel";
 import { api } from "../services/api";
 import { containerVariants, slideInLeft, cardHover } from "../animations";
 import { fmtDate } from "../utils/dateFormat";
+import { buildDataFim, buildDataInicio } from "../utils/monthRange";
 import type { ApiStatus, Proposicao, Votacao } from "../types";
 
 type Tab = "proposicoes" | "votacoes";
@@ -67,15 +68,6 @@ function tipoColor(t: string) {
 
 function fmtTime(date: Date) {
   return date.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
-}
-
-function buildDataInicio(mes: number, ano: number) {
-  return `${ano}-${String(mes).padStart(2, "0")}-01`;
-}
-
-function buildDataFim(mes: number, ano: number) {
-  const ultimoDia = new Date(ano, mes, 0).getDate();
-  return `${ano}-${String(mes).padStart(2, "0")}-${String(ultimoDia).padStart(2, "0")}`;
 }
 
 const MESES = [

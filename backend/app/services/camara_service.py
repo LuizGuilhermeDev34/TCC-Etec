@@ -28,6 +28,15 @@ _VOTOS_SUFFIX_RE = re.compile(
     re.IGNORECASE,
 )
 
+# Ter placar (Sim/Não/Total) não é suficiente pra ser "mérito" — requerimentos
+# e pareceres às vezes são votados nominalmente (com placar) mas continuam
+# sendo trâmite processual, não decisão de mérito sobre o conteúdo de uma lei.
+# Confirmado ao vivo: "Aprovado o Requerimento. Sim: 276; Não: 67; Total: 343."
+_PROCEDURAL_RE = re.compile(
+    r"\b(requerimento|parecer|deferid[oa]|indeferid[oa]|retirad[oa])\b",
+    re.IGNORECASE,
+)
+
 
 def _limpar_descricao(desc: str) -> str:
     return _VOTOS_SUFFIX_RE.sub("", desc).strip()
@@ -338,7 +347,7 @@ def _to_votacao(data: Dict[str, Any]) -> Votacao:
         proposicao_objeto=data.get("proposicaoObjeto"),
         descricao=_limpar_descricao(descricao_bruta),
         aprovacao=int(data.get("aprovacao") or 0),
-        merito=bool(_VOTOS_SUFFIX_RE.search(descricao_bruta)),
+        merito=bool(_VOTOS_SUFFIX_RE.search(descricao_bruta)) and not _PROCEDURAL_RE.search(descricao_bruta),
     )
 
 

@@ -13,6 +13,13 @@ voltando a misturar tudo numa única taxa de "100% de mérito". A correção
 usa o campo `merito`, calculado a partir do placar ("Sim: X; Não: Y;
 Total: Z") que a Câmara embute na descrição bruta ANTES da limpeza —
 sinal independente de proposicao_objeto, que sobrevive ao enriquecimento.
+
+Regressão nº 2, mesmo dia (terceira revisão do Aether): placar sozinho não
+basta. Requerimentos às vezes são votados nominalmente (com placar) e ainda
+assim são trâmite processual, não decisão de mérito — ex: "Aprovado o
+Requerimento. Sim: 276; Não: 67; Total: 343." O critério agora exige as
+duas condições: tem placar E a descrição não contém um verbo de trâmite
+(requerimento/parecer/deferido/indeferido/retirado).
 """
 import pytest
 
@@ -53,9 +60,9 @@ def test_despacho_com_proposicao_enriquecida_nao_vira_merito():
     assert v.proposicao_objeto == "PL 5438/2025"
 
 
-def test_votacao_com_placar_e_merito():
+def test_votacao_com_placar_sem_verbo_processual_e_merito():
     payload = _votacao_payload(
-        "2", "Rejeitado o Requerimento. Sim: 151; Não: 236; Abstenção: 3; Total: 390."
+        "2", "Rejeitado o Projeto de Lei. Sim: 151; Não: 236; Abstenção: 3; Total: 390."
     )
     v = camara_service._to_votacao(payload)
 
@@ -68,6 +75,11 @@ def test_votacao_com_placar_e_merito():
     "Aprovado o parecer na Comissão Mista",
     "Deferido o requerimento REQ 2726/2026, nos termos do artigo 104, caput, do RICD",
     "Retirado o REQ 123/2026 de pauta.",
+    # Regressão de 2026-08-11 (segunda revisão do Aether): requerimento
+    # votado nominalmente (com placar) continua sendo trâmite, não mérito —
+    # placar sozinho não bastava como critério.
+    "Aprovado o Requerimento. Sim: 276; Não: 67; Total: 343.",
+    "Rejeitado o Requerimento. Sim: 114; Não: 319; Abstenção: 2; Total: 435.",
 ])
 def test_despachos_processuais_nao_sao_merito(descricao):
     v = camara_service._to_votacao(_votacao_payload("x", descricao))
