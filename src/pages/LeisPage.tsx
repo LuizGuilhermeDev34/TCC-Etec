@@ -12,6 +12,13 @@ import type { ApiStatus, Proposicao, Votacao } from "../types";
 
 type Tab = "proposicoes" | "votacoes";
 
+// Teto de itens pedido à API por carregamento das votações. Um mês pode ter
+// bem mais que isso (dezembro/2025 tem 300+) — quando a resposta bate nesse
+// teto, o que está na tela é uma amostra dos mais recentes, não o total do
+// período, e a UI precisa deixar isso explícito em vez de apresentar o teto
+// como se fosse a contagem real.
+const VOTACOES_ITENS = 100;
+
 const TIPOS: { value: string; label: string }[] = [
   { value: "",    label: "Todos os tipos" },
   { value: "PL",  label: "Projeto de Lei (PL)" },
@@ -200,7 +207,7 @@ function VotacaoCard({ v }: { v: Votacao }) {
 
 // ── HUD de resumo das votações filtradas ────────────────────────────────────────
 
-function HudResumo({ votacoes, periodoLabel }: { votacoes: Votacao[]; periodoLabel: string }) {
+function HudResumo({ votacoes, periodoLabel, amostra }: { votacoes: Votacao[]; periodoLabel: string; amostra: boolean }) {
   const aprovadas = votacoes.filter((v) => v.aprovacao === 1).length;
   const rejeitadas = votacoes.filter((v) => v.aprovacao === 0).length;
   const total = votacoes.length;
@@ -227,11 +234,16 @@ function HudResumo({ votacoes, periodoLabel }: { votacoes: Votacao[]; periodoLab
   return (
     <div className="space-y-4">
       <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-        <p className="mb-3 text-xs font-bold uppercase tracking-wide text-slate-400">Resumo — {periodoLabel}</p>
+        <p className="mb-1 text-xs font-bold uppercase tracking-wide text-slate-400">Resumo — {periodoLabel}</p>
+        {amostra && (
+          <p className="mb-3 text-[10px] leading-relaxed text-amber-600">
+            Amostra das {total} votações mais recentes do período — pode haver mais registros além destas.
+          </p>
+        )}
         <div className="grid grid-cols-3 gap-2 text-center mb-4">
           <div className="rounded-xl bg-slate-50 p-3">
             <p className="text-2xl font-bold text-slate-800">{total}</p>
-            <p className="text-[10px] text-slate-400 mt-0.5">votações</p>
+            <p className="text-[10px] text-slate-400 mt-0.5">{amostra ? "na amostra" : "votações"}</p>
           </div>
           <div className="rounded-xl bg-green-50 p-3">
             <p className="text-2xl font-bold text-green-600">{aprovadas}</p>
@@ -249,7 +261,7 @@ function HudResumo({ votacoes, periodoLabel }: { votacoes: Votacao[]; periodoLab
               <div>
                 <div className="mb-1 flex items-center justify-between text-[10px] font-semibold uppercase tracking-wide text-slate-300">
                   <span>Votações de mérito ({merito.length})</span>
-                  <span className="text-green-600">{Math.round((meritoAprovadas / merito.length) * 100)}%</span>
+                  <span className="text-green-600">{Math.round((meritoAprovadas / merito.length) * 100)}% aprovadas</span>
                 </div>
                 <div className="h-2 overflow-hidden rounded-full bg-slate-100">
                   <motion.div
@@ -265,7 +277,7 @@ function HudResumo({ votacoes, periodoLabel }: { votacoes: Votacao[]; periodoLab
               <div>
                 <div className="mb-1 flex items-center justify-between text-[10px] font-semibold uppercase tracking-wide text-slate-300">
                   <span>Despachos e procedurais ({procedural.length})</span>
-                  <span className="text-slate-500">{Math.round((proceduralAprovadas / procedural.length) * 100)}%</span>
+                  <span className="text-slate-500">{Math.round((proceduralAprovadas / procedural.length) * 100)}% aprovados</span>
                 </div>
                 <div className="h-2 overflow-hidden rounded-full bg-slate-100">
                   <motion.div
@@ -398,7 +410,7 @@ export function LeisPage() {
     const reqId = ++votReqId.current;
     if (!silent) setStatusVot("loading");
     setRefreshing(true);
-    api.camara.votacoes(100, buildDataInicio(mes, ano), buildDataFim(mes, ano), true)
+    api.camara.votacoes(VOTACOES_ITENS, buildDataInicio(mes, ano), buildDataFim(mes, ano), true)
       .then((d) => {
         if (reqId !== votReqId.current) return;
         setVotacoes(d);
@@ -606,11 +618,20 @@ export function LeisPage() {
               <OfflineBanner source="API da Câmara" onRetry={() => loadVotacoes()} />
             )}
 
-            {statusVot === "success" && (
+            {statusVot === "success" && (() => {
+              // itens=100 é um teto da requisição, não o total real do mês —
+              // dezembro/2025, por exemplo, tem 300+. Quando a resposta bate
+              // no teto, é uma amostra dos mais recentes, e o rótulo precisa
+              // dizer isso em vez de apresentar o teto como contagem do período.
+              const amostra = votacoes.length >= VOTACOES_ITENS;
+              return (
               <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
                 <div className="lg:col-span-2">
                   <p className="mb-3 text-xs text-slate-400">
-                    {votacoes.length} votação(ões) em {MESES[votMes - 1]} {votAno} — clique em um card para ver o voto de cada partido
+                    {amostra
+                      ? `Amostra das ${votacoes.length} votações mais recentes em ${MESES[votMes - 1]} ${votAno} — pode haver mais no período`
+                      : `${votacoes.length} votação(ões) em ${MESES[votMes - 1]} ${votAno}`
+                    } — clique em um card para ver o voto de cada partido
                   </p>
                   <motion.div variants={containerVariants} initial="hidden" animate="show" className="space-y-3">
                     {votacoes.length === 0 && (
@@ -634,10 +655,11 @@ export function LeisPage() {
                 </div>
 
                 <div className="lg:col-span-1">
-                  <HudResumo votacoes={votacoes} periodoLabel={`${MESES[votMes - 1]} ${votAno}`} />
+                  <HudResumo votacoes={votacoes} periodoLabel={`${MESES[votMes - 1]} ${votAno}`} amostra={amostra} />
                 </div>
               </div>
-            )}
+              );
+            })()}
           </>
         )}
       </main>
