@@ -113,16 +113,26 @@ def _to_proposicao(data: Dict[str, Any]) -> Proposicao:
     )
 
 
-async def get_deputados(legislatura: int = 57) -> List[Deputado]:
+_LEGISLATURA_ATUAL = 57
+
+
+async def get_deputados(legislatura: int = _LEGISLATURA_ATUAL) -> List[Deputado]:
     cache_key = f"deputados:{legislatura}"
     cached = _cache.get(cache_key)
     if cached is not None:
         return cached
 
-    payload = await _fetch_camara_json(
-        "/deputados",
-        params={"idLegislatura": legislatura, "itens": 513},
-    )
+    # idLegislatura=57 (a legislatura corrente) devolve um recorte incompleto —
+    # confirmado ao vivo: 46 de 70 deputados de SP, 384 de 513 no total. Parece
+    # não refletir substituições por suplência corretamente. Sem o parâmetro,
+    # a Câmara devolve a composição atual de fato (513 linhas, sem duplicata
+    # nenhuma — testado). Só filtramos por idLegislatura quando é uma
+    # legislatura explicitamente diferente da corrente (consulta histórica).
+    params: Dict[str, Any] = {"itens": 513}
+    if legislatura != _LEGISLATURA_ATUAL:
+        params["idLegislatura"] = legislatura
+
+    payload = await _fetch_camara_json("/deputados", params=params)
     items = payload.get("dados", [])
 
     # A API da Câmara retorna uma linha por período de filiação partidária —
