@@ -7,7 +7,7 @@ from ....schemas.deputado import DeputadoOut
 from ....schemas.deputado_despesa import DeputadoDespesaOut
 from ....schemas.deputado_detail import DeputadoDetailOut
 from ....schemas.deputado_votacao import DeputadoVotacaoOut
-from ....schemas.proposicao import ProposicaoOut
+from ....schemas.proposicao import ProposicaoOut, ProposicoesDeputadoOut
 from ....schemas.votacao import VotacaoOut
 from ....services.camara_service import (
     get_deputado_despesas,
@@ -49,13 +49,13 @@ async def read_deputado(deputado_id: int = Path(..., ge=1)) -> DeputadoDetailOut
     return DeputadoDetailOut.model_validate(detail, from_attributes=True)
 
 
-@router.get("/deputados/{deputado_id}/proposicoes", response_model=List[ProposicaoOut])
-async def read_deputado_proposicoes(deputado_id: int = Path(..., ge=1)) -> List[ProposicaoOut]:
+@router.get("/deputados/{deputado_id}/proposicoes", response_model=ProposicoesDeputadoOut)
+async def read_deputado_proposicoes(deputado_id: int = Path(..., ge=1)) -> ProposicoesDeputadoOut:
     try:
-        proposicoes = await get_deputado_proposicoes(deputado_id)
+        proposicoes, total = await get_deputado_proposicoes(deputado_id)
     except HTTPStatusError as error:
         raise HTTPException(status_code=503, detail="Serviço da Câmara indisponível") from error
-    return [ProposicaoOut.model_validate(p) for p in proposicoes]
+    return ProposicoesDeputadoOut(itens=[ProposicaoOut.model_validate(p) for p in proposicoes], total=total)
 
 
 @router.get("/deputados/{deputado_id}/votacoes", response_model=List[DeputadoVotacaoOut])

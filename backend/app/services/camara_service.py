@@ -22,6 +22,10 @@ _cache_votacao_proposicao = SimpleCache(ttl_seconds=60 * 60 * 24 * 30)
 # não precisa do TTL padrão de 5 min do _cache genérico. TTL próprio evita
 # repetir a chamada de 513 deputados a cada poucos minutos por UF pedida.
 _cache_deputados = SimpleCache(ttl_seconds=60 * 60 * 6)
+# Histórico de votos de 2023 é imutável e caro de montar (varre trimestres +
+# um /votos por votação de plenário) — TTL longo evita refazer o fan-out
+# inteiro a cada visita de perfil.
+_cache_votacoes_historico = SimpleCache(ttl_seconds=60 * 60 * 24 * 7)
 _CAMARA_BASE = "https://dadosabertos.camara.leg.br/api/v2"
 
 # A Câmara às vezes embute "Sim: 87; Não: 301; Total: 388." no fim da descricao
@@ -261,22 +265,48 @@ async def get_partidos() -> List[Dict[str, Any]]:
     return enriched
 
 
-async def get_deputado_proposicoes(deputado_id: int) -> List[Proposicao]:
+def _parse_pagina_from_link(url: str) -> Optional[int]:
+    m = re.search(r"[?&]pagina=(\d+)", url)
+    return int(m.group(1)) if m else None
+
+
+# Só enriquece com o órgão da situação atual as N proposições mais recentes —
+# um deputado pode ter milhares (RIC é um tipo de alto volume), e enriquecer
+# tudo repetiria o mesmo problema de latência já visto no enriquecimento de
+# votações (~100 chamadas extras). As mais recentes são as que aparecem
+# primeiro na tela.
+_ENRIQUECER_PRIMEIRAS_N = 20
+
+
+async def get_deputado_proposicoes(deputado_id: int) -> tuple[List[Proposicao], int]:
+    """Retorna (proposições da página mais recente, total real do deputado)."""
     cache_key = f"dep_proposicoes:{deputado_id}"
     cached = _cache.get(cache_key)
     if cached is not None:
         return cached
 
-    payload = await _fetch_camara_json(
-        "/proposicoes",
-        params={
-            "idDeputadoAutor": deputado_id,
-            "itens": 100,
-            "ordem": "DESC",
-            "ordenarPor": "ano",
-        },
-    )
+    params: Dict[str, Any] = {
+        "idDeputadoAutor": deputado_id,
+        "itens": 100,
+        "ordem": "DESC",
+        "ordenarPor": "ano",
+    }
+    payload = await _fetch_camara_json("/proposicoes", params=params)
     items = payload.get("dados", [])
+
+    # itens=100 é um teto de página, não o total do deputado — a Câmara expõe
+    # o total real via o link "last" da paginação (ex: pagina=39). Uma
+    # segunda chamada à última página dá a contagem exata sem baixar tudo.
+    # Confirmado ao vivo: uma deputada tinha 3822 proposições (maioria RIC) —
+    # mostrar "100" sem indicar que há milhares a mais seria enganoso.
+    total = len(items)
+    last_href = next((l.get("href") for l in payload.get("links", []) if l.get("rel") == "last"), None)
+    if last_href:
+        last_pagina = _parse_pagina_from_link(last_href)
+        if last_pagina and last_pagina > 1:
+            last_payload = await _fetch_camara_json("/proposicoes", params={**params, "pagina": last_pagina})
+            total = (last_pagina - 1) * 100 + len(last_payload.get("dados", []))
+
     # Primary sort: newest date first. Secondary: type importance (PL > PEC > PDC > MPV > others).
     _TIPO_PRIORITY = {"PL": 1, "PEC": 2, "PDC": 3, "MPV": 4, "REQ": 5, "INC": 6}
     proposicoes = sorted(
@@ -284,8 +314,27 @@ async def get_deputado_proposicoes(deputado_id: int) -> List[Proposicao]:
         key=lambda p: (p.ano, p.data_apresentacao or "", -_TIPO_PRIORITY.get(p.sigla_tipo, 99)),
         reverse=True,
     )
-    _cache.set(cache_key, proposicoes)
-    return proposicoes
+
+    # Órgão da situação atual (ex: CSPCCO) — sem isso, requerimentos de
+    # comissões diferentes com o mesmo número parecem duplicatas, já que cada
+    # comissão numera a própria série de REQ.
+    a_enriquecer = proposicoes[:_ENRIQUECER_PRIMEIRAS_N]
+    id_to_prop = {p.id: p for p in a_enriquecer}
+    async with httpx.AsyncClient(timeout=12.0) as client:
+        results = await asyncio.gather(
+            *[_fetch_proposicao_status(client, p.id) for p in a_enriquecer],
+            return_exceptions=True,
+        )
+    for result in results:
+        if isinstance(result, tuple):
+            pid, desc, orgao = result
+            if pid in id_to_prop:
+                id_to_prop[pid].descricao_situacao = desc
+                id_to_prop[pid].orgao_situacao = orgao
+
+    resultado = (proposicoes, total)
+    _cache.set(cache_key, resultado)
+    return resultado
 
 
 async def _fetch_proposicao_status(
@@ -458,22 +507,40 @@ async def _fetch_deputy_vote_for_votacao(
     return None
 
 
+_TRIMESTRES_2023 = [
+    ("2023-01-01", "2023-03-31"),
+    ("2023-04-01", "2023-06-30"),
+    ("2023-07-01", "2023-09-30"),
+    ("2023-10-01", "2023-12-31"),
+]
+
+
 async def get_deputado_votacoes(deputado_id: int) -> List[DeputadoVotacao]:
     """
-    Fetch voting records for a deputy by scanning plenário (PLEN) votações from 2023.
-    Only plenário votes have all 513 deputies — committee votes skip absent members.
-    The /votos endpoint has a multi-month publication lag, so 2023 data is used.
+    Busca o histórico de votos individuais de um deputado, varrendo votações de
+    plenário (PLEN) de 2023 — só lá o placar cobre os 513 deputados; comissão
+    pula quem faltou. 2023 (primeiro ano da legislatura) segue sendo usado
+    porque tem alta densidade de votações nominais contestadas; testado ao
+    vivo em 2026: a maioria das votações de plenário recentes é por
+    unanimidade, sem voto individual registrado — não é atraso de publicação,
+    é ausência estrutural do dado nesse tipo de votação (ver Limitações
+    conhecidas na home).
+    A Câmara rejeita dataInicio/dataFim cobrindo o ano inteiro numa chamada só
+    (400) — busca feita por trimestre.
     """
     cache_key = f"dep_votacoes:{deputado_id}"
-    cached = _cache.get(cache_key)
+    cached = _cache_votacoes_historico.get(cache_key)
     if cached is not None:
         return cached
 
-    payload = await _fetch_camara_json(
-        "/votacoes",
-        params={"dataInicio": "2023-01-01", "dataFim": "2023-12-31", "itens": 100},
-    )
-    votacoes_list = [v for v in payload.get("dados", []) if v.get("siglaOrgao") == "PLEN"]
+    votacoes_list: List[Dict[str, Any]] = []
+    for inicio, fim in _TRIMESTRES_2023:
+        payload = await _fetch_camara_json(
+            "/votacoes", params={"dataInicio": inicio, "dataFim": fim, "itens": 100}
+        )
+        votacoes_list.extend(
+            v for v in payload.get("dados", []) if v.get("siglaOrgao") == "PLEN"
+        )
 
     results: List[DeputadoVotacao] = []
     batch_size = 10
@@ -484,8 +551,10 @@ async def get_deputado_votacoes(deputado_id: int) -> List[DeputadoVotacao]:
                 *[_fetch_deputy_vote_for_votacao(client, v, deputado_id) for v in batch]
             )
             results.extend(r for r in batch_results if r is not None)
+            if i + batch_size < len(votacoes_list):
+                await asyncio.sleep(0.2)
 
-    _cache.set(cache_key, results)
+    _cache_votacoes_historico.set(cache_key, results)
     return results
 
 

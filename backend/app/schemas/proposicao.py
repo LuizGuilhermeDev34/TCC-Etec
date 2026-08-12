@@ -1,4 +1,4 @@
-from typing import Optional
+from typing import List, Optional
 from pydantic import BaseModel
 
 
@@ -14,3 +14,8 @@ class ProposicaoOut(BaseModel):
     orgao_situacao: Optional[str] = None
 
     model_config = {"from_attributes": True}
+
+
+class ProposicoesDeputadoOut(BaseModel):
+    itens: List[ProposicaoOut]
+    total: int

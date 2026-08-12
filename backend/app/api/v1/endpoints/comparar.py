@@ -45,14 +45,17 @@ async def _get_deputado_data(dep_id: int) -> Dict[str, Any]:
         raise HTTPException(status_code=404, detail=f"Deputado {dep_id} não encontrado") from exc
 
     # Proposições, despesas e patrimônio em paralelo
-    proposicoes, despesas, patrimonio = await asyncio.gather(
+    proposicoes_result, despesas, patrimonio = await asyncio.gather(
         get_deputado_proposicoes(dep_id),
         get_deputado_despesas(dep_id),
         get_patrimonio_deputado_federal(detail.nome, detail.nome_civil or ""),
         return_exceptions=True,
     )
 
-    proposicoes = proposicoes if isinstance(proposicoes, list) else []
+    if isinstance(proposicoes_result, tuple):
+        proposicoes, proposicoes_total_real = proposicoes_result
+    else:
+        proposicoes, proposicoes_total_real = [], 0
     despesas = despesas if isinstance(despesas, list) else []
     patrimonio = patrimonio if isinstance(patrimonio, dict) else {}
 
@@ -69,7 +72,7 @@ async def _get_deputado_data(dep_id: int) -> Dict[str, Any]:
         "id_legislatura": detail.id_legislatura,
         "escolaridade": detail.escolaridade,
         "data_nascimento": detail.data_nascimento,
-        "proposicoes_total": len(proposicoes),
+        "proposicoes_total": proposicoes_total_real,
         "proposicoes_por_tipo": _por_tipo(proposicoes),
         "gastos_total": gastos_total,
         "patrimonio_total": patrimonio_total,
