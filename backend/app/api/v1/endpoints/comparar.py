@@ -7,27 +7,11 @@ from ....services.camara_service import (
     get_deputado_detail,
     get_deputado_despesas,
     get_deputado_proposicoes,
+    get_deputado_proposicoes_por_tipo,
 )
 from ....services.tse_service import get_patrimonio_deputado_federal
 
 router = APIRouter(prefix="/comparar", tags=["comparar"])
-
-
-def _score_atividade(proposicoes: list, gastos_total: float) -> float:
-    """Índice de Atividade Legislativa — 0 a 10."""
-    total = len(proposicoes)
-    tipos = set(p.sigla_tipo for p in proposicoes)
-    impacto = sum(
-        1 for p in proposicoes
-        if p.sigla_tipo in ("PL", "PEC", "PLP", "PDL", "MPV")
-    )
-
-    pts_total = min(total / 80.0, 1.0) * 4.0
-    pts_impacto = min(impacto / 20.0, 1.0) * 3.0
-    pts_variedade = min(len(tipos) / 5.0, 1.0) * 2.0
-    pts_gastos = max(0.0, 1.0 - min(gastos_total / 100_000.0, 1.0)) * 1.0
-
-    return round(pts_total + pts_impacto + pts_variedade + pts_gastos, 1)
 
 
 def _por_tipo(proposicoes: list) -> Dict[str, int]:
@@ -62,6 +46,14 @@ async def _get_deputado_data(dep_id: int) -> Dict[str, Any]:
     gastos_total = sum(d.valor_liquido for d in despesas if d.valor_liquido > 0)
     patrimonio_total = patrimonio.get("total", 0.0)
 
+    # Contagem real por tipo (não a amostra de 100) — evita mostrar "3822
+    # total" ao lado de um detalhamento que soma 97, como se os números se
+    # contradissessem. Só busca os tipos que já apareceram na amostra: um
+    # tipo raro demais pra aparecer nos 100 itens mais recentes (ordenados
+    # por ano) fica de fora do detalhamento, mesma ressalva de sempre.
+    tipos_na_amostra = list(_por_tipo(proposicoes).keys())
+    proposicoes_por_tipo = await get_deputado_proposicoes_por_tipo(detail.id, tipos_na_amostra)
+
     return {
         "id": detail.id,
         "nome": detail.nome,
@@ -73,10 +65,12 @@ async def _get_deputado_data(dep_id: int) -> Dict[str, Any]:
         "escolaridade": detail.escolaridade,
         "data_nascimento": detail.data_nascimento,
         "proposicoes_total": proposicoes_total_real,
-        "proposicoes_por_tipo": _por_tipo(proposicoes),
+        "proposicoes_por_tipo": proposicoes_por_tipo,
         "gastos_total": gastos_total,
+        # despesas vazio hoje é um problema de fonte (Câmara respondendo 200
+        # com dados: [] para todo mundo, verificado ao vivo), não zero real.
+        "despesas_indisponivel": len(despesas) == 0,
         "patrimonio_total": patrimonio_total,
-        "score_atividade": _score_atividade(proposicoes, gastos_total),
     }
 
 

@@ -303,44 +303,6 @@ function DeputadoSelector({
   );
 }
 
-// ── Score gauge ────────────────────────────────────────────────────────────────
-
-function ScoreGauge({ score, color }: { score: number; color: string }) {
-  const pct = (score / 10) * 100;
-  const strokeColor = color === "blue" ? "#3b82f6" : "#8b5cf6";
-  const r = 38;
-  const circ = 2 * Math.PI * r;
-  const dash = (pct / 100) * circ;
-
-  return (
-    <div className="flex flex-col items-center gap-1">
-      <div className="relative h-24 w-24">
-        <svg viewBox="0 0 100 100" className="h-full w-full -rotate-90">
-          <circle cx="50" cy="50" r={r} fill="none" stroke="#f1f5f9" strokeWidth="10" />
-          <motion.circle
-            cx="50"
-            cy="50"
-            r={r}
-            fill="none"
-            stroke={strokeColor}
-            strokeWidth="10"
-            strokeLinecap="round"
-            strokeDasharray={circ}
-            initial={{ strokeDashoffset: circ }}
-            animate={{ strokeDashoffset: circ - dash }}
-            transition={{ duration: 1.2, ease: "easeOut" }}
-          />
-        </svg>
-        <div className="absolute inset-0 flex flex-col items-center justify-center">
-          <span className="text-2xl font-extrabold text-slate-800">{score}</span>
-          <span className="text-[10px] text-slate-400 font-semibold">/10</span>
-        </div>
-      </div>
-      <p className="text-[11px] font-semibold text-slate-500 text-center">Índice de<br />Atividade</p>
-    </div>
-  );
-}
-
 // ── Metric card (main metrics) ────────────────────────────────────────────────
 
 function MetricCard({
@@ -349,24 +311,24 @@ function MetricCard({
   valA,
   valB,
   fmt,
-  invert = false,
   nameA,
   nameB,
+  indisponivel = false,
 }: {
   label: string;
   icon: React.ReactNode;
   valA: number;
   valB: number;
   fmt: (n: number) => string;
-  invert?: boolean;
   nameA: string;
   nameB: string;
+  /** Dado indisponível na fonte (ex: despesas CEAP retornando vazio pra
+      todo mundo) — mostra estado honesto em vez de "0 vs 0" comparável. */
+  indisponivel?: boolean;
 }) {
   const max = Math.max(valA, valB, 1);
   const pctA = (valA / max) * 100;
   const pctB = (valB / max) * 100;
-  const winnerA = invert ? valA <= valB : valA >= valB;
-  const tie = valA === valB;
 
   return (
     <div className="overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-sm">
@@ -374,66 +336,53 @@ function MetricCard({
       <div className="flex items-center gap-2 border-b border-slate-100 bg-slate-50 px-5 py-3">
         <span className="text-slate-400">{icon}</span>
         <span className="text-xs font-bold uppercase tracking-widest text-slate-500">{label}</span>
-        {invert && (
-          <span className="ml-auto text-[10px] font-semibold text-slate-400">(menor = melhor)</span>
-        )}
       </div>
 
-      <div className="p-5">
-        {/* Values */}
-        <div className="mb-4 grid grid-cols-[1fr_auto_1fr] items-center gap-4">
-          {/* A */}
-          <div className={`flex flex-col items-end gap-1 transition-opacity ${!winnerA && !tie ? "opacity-40" : ""}`}>
-            <span className="text-[11px] font-semibold text-blue-400 truncate max-w-full">{nameA}</span>
-            <span className={`text-2xl font-extrabold leading-none ${winnerA || tie ? "text-blue-600" : "text-slate-400"}`}>
-              {fmt(valA)}
-            </span>
-            {winnerA && !tie && (
-              <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-700">
-                ★ Melhor
-              </span>
-            )}
+      {indisponivel ? (
+        <div className="p-5 text-center text-xs text-slate-400">
+          Dado indisponível no momento — a fonte oficial não retornou registros para nenhum dos dois.
+        </div>
+      ) : (
+        <div className="p-5">
+          {/* Values — lado a lado, sem veredito de "melhor" (mais proposições,
+              mais patrimônio ou menos gasto não é um juízo que o site faz). */}
+          <div className="mb-4 grid grid-cols-[1fr_auto_1fr] items-center gap-4">
+            <div className="flex flex-col items-end gap-1">
+              <span className="text-[11px] font-semibold text-blue-400 truncate max-w-full">{nameA}</span>
+              <span className="text-2xl font-extrabold leading-none text-blue-600">{fmt(valA)}</span>
+            </div>
+
+            <div className="flex flex-col items-center gap-1">
+              <div className="h-10 w-px bg-slate-200" />
+              <span className="text-[9px] font-black text-slate-300">VS</span>
+              <div className="h-10 w-px bg-slate-200" />
+            </div>
+
+            <div className="flex flex-col items-start gap-1">
+              <span className="text-[11px] font-semibold text-violet-400 truncate max-w-full">{nameB}</span>
+              <span className="text-2xl font-extrabold leading-none text-violet-600">{fmt(valB)}</span>
+            </div>
           </div>
 
-          {/* Divider */}
-          <div className="flex flex-col items-center gap-1">
-            <div className="h-10 w-px bg-slate-200" />
-            <span className="text-[9px] font-black text-slate-300">VS</span>
-            <div className="h-10 w-px bg-slate-200" />
-          </div>
-
-          {/* B */}
-          <div className={`flex flex-col items-start gap-1 transition-opacity ${winnerA && !tie ? "opacity-40" : ""}`}>
-            <span className="text-[11px] font-semibold text-violet-400 truncate max-w-full">{nameB}</span>
-            <span className={`text-2xl font-extrabold leading-none ${!winnerA || tie ? "text-violet-600" : "text-slate-400"}`}>
-              {fmt(valB)}
-            </span>
-            {!winnerA && !tie && (
-              <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-700">
-                ★ Melhor
-              </span>
-            )}
+          {/* Back-to-back bars — proporção visual, não ranking */}
+          <div className="flex h-5 w-full overflow-hidden rounded-full bg-slate-100">
+            <motion.div
+              className="h-full origin-right bg-gradient-to-r from-blue-400 to-blue-600"
+              style={{ marginLeft: "auto" }}
+              initial={{ width: 0 }}
+              animate={{ width: `${pctA / 2}%` }}
+              transition={{ duration: 0.9, ease: "easeOut" }}
+            />
+            <div className="w-0.5 flex-shrink-0 bg-white" />
+            <motion.div
+              className="h-full origin-left bg-gradient-to-r from-violet-400 to-violet-600"
+              initial={{ width: 0 }}
+              animate={{ width: `${pctB / 2}%` }}
+              transition={{ duration: 0.9, ease: "easeOut" }}
+            />
           </div>
         </div>
-
-        {/* Back-to-back progress bars */}
-        <div className="flex h-5 w-full overflow-hidden rounded-full bg-slate-100">
-          <motion.div
-            className={`h-full origin-right ${winnerA || tie ? "bg-gradient-to-r from-blue-400 to-blue-600" : "bg-blue-200"}`}
-            style={{ marginLeft: "auto" }}
-            initial={{ width: 0 }}
-            animate={{ width: `${pctA / 2}%` }}
-            transition={{ duration: 0.9, ease: "easeOut" }}
-          />
-          <div className="w-0.5 flex-shrink-0 bg-white" />
-          <motion.div
-            className={`h-full origin-left ${!winnerA || tie ? "bg-gradient-to-r from-violet-400 to-violet-600" : "bg-violet-200"}`}
-            initial={{ width: 0 }}
-            animate={{ width: `${pctB / 2}%` }}
-            transition={{ duration: 0.9, ease: "easeOut" }}
-          />
-        </div>
-      </div>
+      )}
     </div>
   );
 }
@@ -549,10 +498,6 @@ function ProfileCard({
         )}
       </div>
 
-      <div className="w-full border-t border-white pt-3">
-        <ScoreGauge score={dep.score_atividade} color={color} />
-      </div>
-
       <Link
         to={linkTo}
         className={`mt-1 w-full rounded-xl py-2 text-xs font-bold text-white transition hover:opacity-90 ${badgeCls}`}
@@ -575,6 +520,13 @@ function TipoBreakdown({ a, b }: { a: CompararDeputado; b: CompararDeputado }) {
 
   if (allTipos.length === 0) return null;
 
+  // Cada contagem por tipo agora é real (segunda chamada à API filtrada por
+  // siglaTipo, não a amostra de 100 misturados) — a soma só fica abaixo do
+  // total quando existe um tipo raro demais pra aparecer nas proposições
+  // mais recentes (a amostra usada só pra descobrir quais tipos consultar).
+  const sumTipoA = Object.values(a.proposicoes_por_tipo).reduce((s, n) => s + n, 0);
+  const sumTipoB = Object.values(b.proposicoes_por_tipo).reduce((s, n) => s + n, 0);
+
   return (
     <div className="overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-sm">
       <div className="flex items-center gap-2 border-b border-slate-100 bg-slate-50 px-5 py-3">
@@ -583,6 +535,13 @@ function TipoBreakdown({ a, b }: { a: CompararDeputado; b: CompararDeputado }) {
         </svg>
         <span className="text-xs font-bold uppercase tracking-widest text-slate-500">Proposições por Tipo</span>
       </div>
+      {(sumTipoA < a.proposicoes_total || sumTipoB < b.proposicoes_total) && (
+        <p className="border-b border-slate-100 bg-amber-50 px-5 py-2 text-[11px] leading-relaxed text-amber-700">
+          As contagens por tipo abaixo são reais, mas um tipo raro demais para aparecer entre as proposições mais
+          recentes de {a.nome.split(" ")[0]} ou {b.nome.split(" ")[0]} pode não estar listado — a soma por tipo aqui
+          pode ficar um pouco abaixo do total geral acima.
+        </p>
+      )}
       <div className="grid grid-cols-1 gap-3 p-5 sm:grid-cols-2">
         {allTipos.slice(0, 8).map((tipo) => {
           const vA = a.proposicoes_por_tipo[tipo] ?? 0;
@@ -667,9 +626,9 @@ function ComparisonView({ result }: { result: CompararResult }) {
           valA={a.gastos_total}
           valB={b.gastos_total}
           fmt={fmtBRL}
-          invert
           nameA={nomeA}
           nameB={nomeB}
+          indisponivel={a.despesas_indisponivel || b.despesas_indisponivel}
         />
       </div>
 

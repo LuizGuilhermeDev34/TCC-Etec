@@ -49,14 +49,19 @@ _PROCEDURAL_RE = re.compile(
 def _limpar_descricao(desc: str) -> str:
     return _VOTOS_SUFFIX_RE.sub("", desc).strip()
 
-# Presidentes nacionais dos partidos (não expostos via API da Câmara)
+# Presidentes nacionais dos partidos (não expostos via API da Câmara).
+# Risco de desatualização real, não só teórico: o PDT estava com "Ciro Gomes"
+# até 2026-08-12, quando foi corrigido pra Carlos Lupi (presidente desde 2004,
+# confirmado via Portal da Câmara/Senado/site do PDT) — Ciro nunca presidiu o
+# PDT nesse período. Reverificar esta lista periodicamente contra fonte
+# oficial antes de confiar nela; não foi reauditada entrada por entrada.
 _PARTY_PRESIDENTS: Dict[str, Dict[str, str]] = {
     "PT":           {"nome": "Gleisi Hoffmann",     "wiki": "Gleisi_Hoffmann"},
     "PL":           {"nome": "Valdemar Costa Neto", "wiki": "Valdemar_Costa_Neto"},
     "MDB":          {"nome": "Baleia Rossi",         "wiki": "Baleia_Rossi"},
     "UNIÃO":        {"nome": "Antonio Rueda",        "wiki": "Antonio_Rueda"},
     "PSD":          {"nome": "Gilberto Kassab",      "wiki": "Gilberto_Kassab"},
-    "PDT":          {"nome": "Ciro Gomes",           "wiki": "Ciro_Gomes"},
+    "PDT":          {"nome": "Carlos Lupi",          "wiki": "Carlos_Lupi"},
     "PSOL":         {"nome": "Juliano Medeiros",     "wiki": "Juliano_Medeiros"},
     "REPUBLICANOS": {"nome": "Marcos Pereira",       "wiki": "Marcos_Pereira_Gadelha"},
     "PP":           {"nome": "Cláudio Cajado",       "wiki": "Cláudio_Cajado"},
@@ -333,6 +338,65 @@ async def get_deputado_proposicoes(deputado_id: int) -> tuple[List[Proposicao], 
                 id_to_prop[pid].orgao_situacao = orgao
 
     resultado = (proposicoes, total)
+    _cache.set(cache_key, resultado)
+    return resultado
+
+
+async def _fetch_proposicao_tipo_total(
+    client: httpx.AsyncClient,
+    deputado_id: int,
+    sigla_tipo: str,
+) -> tuple[str, int]:
+    """Total real de proposições de um tipo específico do deputado — mesmo
+    truque do link "last" usado em get_deputado_proposicoes, mas por tipo.
+    Como cada tipo isolado raramente passa de 100 itens, na prática é uma
+    chamada só (a segunda, na última página, só dispara se esse tipo
+    específico também estourar o teto)."""
+    params = {"idDeputadoAutor": deputado_id, "siglaTipo": sigla_tipo, "itens": 100}
+    try:
+        resp = await client.get(f"{_CAMARA_BASE}/proposicoes", params=params, timeout=12.0)
+        if not resp.is_success:
+            return sigla_tipo, 0
+        payload = resp.json()
+        total = len(payload.get("dados", []))
+        last_href = next((l.get("href") for l in payload.get("links", []) if l.get("rel") == "last"), None)
+        if last_href:
+            last_pagina = _parse_pagina_from_link(last_href)
+            if last_pagina and last_pagina > 1:
+                last_resp = await client.get(
+                    f"{_CAMARA_BASE}/proposicoes", params={**params, "pagina": last_pagina}, timeout=12.0
+                )
+                if last_resp.is_success:
+                    total = (last_pagina - 1) * 100 + len(last_resp.json().get("dados", []))
+        return sigla_tipo, total
+    except Exception:
+        return sigla_tipo, 0
+
+
+async def get_deputado_proposicoes_por_tipo(deputado_id: int, tipos: List[str]) -> Dict[str, int]:
+    """Contagem REAL (não a amostra de 100) de proposições por tipo, para os
+    tipos informados. Usado pelo comparador — sem isso, "3822 total" e um
+    detalhamento que soma 97 (a amostra) apareciam lado a lado como se se
+    contradissessem."""
+    if not tipos:
+        return {}
+
+    cache_key = f"dep_prop_por_tipo:{deputado_id}:{','.join(sorted(tipos))}"
+    cached = _cache.get(cache_key)
+    if cached is not None:
+        return cached
+
+    async with httpx.AsyncClient(timeout=12.0) as client:
+        results = await asyncio.gather(
+            *[_fetch_proposicao_tipo_total(client, deputado_id, t) for t in tipos],
+            return_exceptions=True,
+        )
+
+    resultado: Dict[str, int] = {}
+    for r in results:
+        if isinstance(r, tuple):
+            resultado[r[0]] = r[1]
+
     _cache.set(cache_key, resultado)
     return resultado
 
@@ -625,13 +689,19 @@ async def _fetch_votacao_party_stats(
                 abstencao += 1
         if sim + nao + abstencao == 0:
             return None
+        descricao_bruta = votacao.get("descricao") or votacao.get("proposicaoObjeto") or ""
         return {
             "id": vid,
             "data": votacao.get("data", ""),
-            "descricao": (votacao.get("descricao") or votacao.get("proposicaoObjeto") or "")[:120],
+            "descricao": descricao_bruta[:120],
             "sim": sim,
             "nao": nao,
             "abstencao": abstencao,
+            # Aqui já sabemos que é nominal (sim+nao+abstencao>0) — falta só
+            # excluir trâmite processual (requerimento/parecer/deferimento).
+            # Sem isso, "100% de aprovação" pode vir de uma única votação
+            # processual em 6 meses — já aconteceu (10 votos, 1 votação).
+            "merito": not _PROCEDURAL_RE.search(descricao_bruta),
         }
     except Exception:
         return None
@@ -671,18 +741,28 @@ async def get_partido_votacoes_stats(partido_id: int) -> Dict[str, Any]:
                 await asyncio.sleep(0.3)
 
     votacoes_detail = [r for r in all_results if isinstance(r, dict)]
-    total_sim = sum(v["sim"] for v in votacoes_detail)
-    total_nao = sum(v["nao"] for v in votacoes_detail)
-    total_abstencao = sum(v["abstencao"] for v in votacoes_detail)
+    # "% de aprovação" só faz sentido sobre votações de mérito — misturar
+    # despachos/requerimentos (quase sempre unânimes) infla o número e, com
+    # poucas votações de mérito no período, uma única delas decide o
+    # percentual inteiro (já vimos "100% de aprovação" vindo de 1 votação
+    # com 10 votos). Separar os dois grupos e expor o tamanho da amostra
+    # deixa isso auditável em vez de escondido atrás de um número só.
+    merito_detail = [v for v in votacoes_detail if v["merito"]]
+    procedural_detail = [v for v in votacoes_detail if not v["merito"]]
+    total_sim = sum(v["sim"] for v in merito_detail)
+    total_nao = sum(v["nao"] for v in merito_detail)
+    total_abstencao = sum(v["abstencao"] for v in merito_detail)
 
     result: Dict[str, Any] = {
         "total_sim": total_sim,
         "total_nao": total_nao,
         "total_abstencao": total_abstencao,
+        "votacoes_merito_count": len(merito_detail),
+        "votacoes_procedural_count": len(procedural_detail),
         "votacoes": sorted(votacoes_detail, key=lambda x: x["data"], reverse=True)[:10],
     }
     # Only cache when we actually found data — empty results may be transient API failures
-    if total_sim + total_nao + total_abstencao > 0:
+    if len(votacoes_detail) > 0:
         _cache_live.set(cache_key, result)
     return result
 
@@ -761,7 +841,15 @@ async def get_partido_gastos(partido_id: int) -> Dict[str, Any]:
         reverse=True,
     )[:8]
 
-    result = {"total": total, "categorias": sorted_cats, "ano": ano_dados}
+    result = {
+        "total": total,
+        "categorias": sorted_cats,
+        "ano": ano_dados,
+        # Mesmo sinal de comparar.py: a Câmara está devolvendo 200 com
+        # dados: [] pra despesas de todo mundo (verificado ao vivo) — "sem
+        # categorias" aqui é a fonte vazia, não a bancada gastando zero.
+        "despesas_indisponivel": len(categorias) == 0,
+    }
     _cache.set(cache_key, result)
     return result
 

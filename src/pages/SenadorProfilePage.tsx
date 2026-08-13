@@ -29,17 +29,25 @@ function voteColor(tipo: string) {
 }
 
 function computeStats(votacoes: DeputadoVotacao[]) {
-  let sim = 0, nao = 0, abstencao = 0, outro = 0;
+  // Não existe sinal de "ausência" nesse dado — a API do Senado só devolve
+  // votações em que o senador tem algum registro (voto aberto ou secreto).
+  // "Voto Secreto" e "Obstrução" são formas legítimas de participação, não
+  // falta: contá-las como ausência (como uma versão anterior desta página
+  // fazia) produzia uma "taxa de presença" que na prática acusava o
+  // parlamentar de faltar a votações que ele participou, só que em voto
+  // secreto — comum em indicações de embaixadores, CVM, CNJ etc.
+  let sim = 0, nao = 0, abstencao = 0, secreto = 0, obstrucao = 0, outro = 0;
   for (const v of votacoes) {
     const t = v.tipo_voto.toLowerCase();
     if (t === "sim" || t.includes("favor")) sim++;
     else if (t === "não" || t === "nao" || t.includes("contra")) nao++;
     else if (t.includes("absten")) abstencao++;
+    else if (t.includes("secreto")) secreto++;
+    else if (t.includes("obstru")) obstrucao++;
     else outro++;
   }
   const total = votacoes.length;
-  const presenca = total > 0 ? Math.round(((sim + nao + abstencao) / total) * 100) : 0;
-  return { sim, nao, abstencao, outro, total, presenca };
+  return { sim, nao, abstencao, secreto, obstrucao, outro, total };
 }
 
 export function SenadorProfilePage() {
@@ -167,10 +175,18 @@ export function SenadorProfilePage() {
                       { value: stats.sim, color: "#22c55e", label: "A favor" },
                       { value: stats.nao, color: "#ef4444", label: "Contra" },
                       { value: stats.abstencao, color: "#94a3b8", label: "Abstenção" },
-                      { value: stats.outro, color: "#f59e0b", label: "Outro" },
+                      { value: stats.secreto, color: "#64748b", label: "Voto Secreto" },
+                      { value: stats.obstrucao, color: "#f59e0b", label: "Obstrução" },
+                      { value: stats.outro, color: "#fbbf24", label: "Outro" },
                     ]} />
                     <div className="flex flex-wrap justify-center gap-2 text-xs">
-                      {[{ color: "bg-green-500", label: "A favor" }, { color: "bg-red-500", label: "Contra" }, { color: "bg-slate-400", label: "Abstenção" }].map((l) => (
+                      {[
+                        { color: "bg-green-500", label: "A favor" },
+                        { color: "bg-red-500", label: "Contra" },
+                        { color: "bg-slate-400", label: "Abstenção" },
+                        ...(stats.secreto > 0 ? [{ color: "bg-slate-500", label: "Voto Secreto" }] : []),
+                        ...(stats.obstrucao > 0 ? [{ color: "bg-amber-500", label: "Obstrução" }] : []),
+                      ].map((l) => (
                         <span key={l.label} className="flex items-center gap-1">
                           <span className={`h-2 w-2 rounded-full ${l.color}`} />
                           {l.label}
@@ -180,9 +196,9 @@ export function SenadorProfilePage() {
                   </div>
                   <div className="flex flex-1 flex-col gap-3">
                     <div className="rounded-lg border border-slate-100 bg-slate-50 p-4 text-center">
-                      <p className="text-xs font-medium text-slate-400 uppercase tracking-wide">Taxa de Presença</p>
-                      <p className="mt-1 text-4xl font-bold text-slate-900">{stats.presenca} <span className="text-2xl text-slate-500">%</span></p>
-                      <p className="mt-0.5 text-xs text-slate-400">{stats.total} votações analisadas</p>
+                      <p className="text-xs font-medium text-slate-400 uppercase tracking-wide">Votações registradas</p>
+                      <p className="mt-1 text-4xl font-bold text-slate-900">{stats.total}</p>
+                      <p className="mt-0.5 text-xs text-slate-400">no período analisado</p>
                     </div>
                     <div className="grid grid-cols-3 gap-2">
                       {[
@@ -196,6 +212,13 @@ export function SenadorProfilePage() {
                         </div>
                       ))}
                     </div>
+                    {stats.secreto > 0 && (
+                      <p className="text-[11px] leading-relaxed text-slate-400">
+                        {stats.secreto} {stats.secreto === 1 ? "dessas votações foi" : "dessas votações foram"} por voto secreto
+                        (comum em indicações de embaixadores, autoridades do CVM, CNJ etc.) — {senador.sexo === "Feminino" ? "a senadora" : "o senador"} participou,
+                        mas o Senado não divulga o voto individual nesses casos. Não contamos isso como ausência.
+                      </p>
+                    )}
                   </div>
                 </div>
               )}
@@ -227,12 +250,12 @@ export function SenadorProfilePage() {
                 <div className="rounded-xl bg-slate-50 px-4 py-3">
                   <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Teto constitucional</p>
                   <p className="mt-1 text-2xl font-bold text-slate-700">R$&nbsp;46.366,19</p>
-                  <p className="mt-1 text-[11px] text-slate-400">Fixado pelo STF como teto do funcionalismo</p>
+                  <p className="mt-1 text-[11px] text-slate-400">Igual ao subsídio de ministro do STF (art. 37, XI da CF)</p>
                 </div>
               </div>
 
               <p className="mt-3 text-[11px] text-slate-400">
-                O subsídio é fixado por lei e é idêntico para todos os senadores em exercício. Não inclui CEAPS, passagens ou outras verbas indenizatórias.{" "}
+                Os dois valores coincidem porque o subsídio de senador é hoje igual ao teto constitucional — não é o STF quem fixa esse teto: a Constituição (art. 37, XI) define o teto do funcionalismo como igual ao subsídio de ministro do STF, e esse subsídio é fixado por lei do Congresso Nacional, com sanção do Presidente da República (art. 48, XV da CF), não pela própria Corte. É idêntico para todos os senadores em exercício e não inclui CEAPS, passagens ou outras verbas indenizatórias.{" "}
                 <a href="https://www.senado.leg.br/transparencia/RH/Salarios/salarios.asp" target="_blank" rel="noopener noreferrer" className="underline hover:text-slate-600">
                   Ver no portal de transparência
                 </a>

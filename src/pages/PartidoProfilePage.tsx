@@ -485,20 +485,19 @@ export function PartidoProfilePage() {
             </SectionCard>
 
             {/* ── STATS ── */}
-            <div className="grid gap-4 sm:grid-cols-3">
+            {/* "totalPosse" (Câmara) não é "cadeiras atuais" apesar do nome —
+                é quanta gente já tomou posse pela legenda nesta legislatura,
+                inflado pelo mesmo efeito de troca de partido que já achamos
+                em get_deputados (ex: PDT mostrava 9 membros e 16 "cadeiras em
+                exercício" ao mesmo tempo, sem como reconciliar). Removido até
+                termos uma explicação verificada pra mostrar com confiança. */}
+            <div className="grid gap-4 sm:grid-cols-2">
               <SectionCard className="p-5 text-center">
                 <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">Membros na Câmara</p>
                 <p className={`mt-2 text-4xl font-bold ${bg.replace("bg-", "text-")}`}>
                   {partido.totalMembros ?? "—"}
                 </p>
                 <p className="mt-1 text-xs text-slate-400">57ª Legislatura</p>
-              </SectionCard>
-              <SectionCard className="p-5 text-center">
-                <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">Cadeiras em exercício</p>
-                <p className={`mt-2 text-4xl font-bold ${bg.replace("bg-", "text-")}`}>
-                  {partido.totalPosse ?? "—"}
-                </p>
-                <p className="mt-1 text-xs text-slate-400">em posse</p>
               </SectionCard>
               <SectionCard className="p-5 text-center">
                 <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">Representatividade</p>
@@ -577,7 +576,20 @@ export function PartidoProfilePage() {
               {statusVot === "error" && <p className="text-sm text-slate-400">Não foi possível carregar as votações.</p>}
               {statusVot === "success" && votStats && (
                 <div className="space-y-5">
-                  <DonutChart sim={votStats.total_sim} nao={votStats.total_nao} abstencao={votStats.total_abstencao} />
+                  {votStats.votacoes_merito_count > 0 ? (
+                    <div>
+                      <DonutChart sim={votStats.total_sim} nao={votStats.total_nao} abstencao={votStats.total_abstencao} />
+                      <p className="mt-2 text-[11px] leading-relaxed text-slate-400">
+                        Baseado em {votStats.votacoes_merito_count} votaç{votStats.votacoes_merito_count === 1 ? "ão" : "ões"} de mérito nos últimos 6 meses
+                        {votStats.votacoes_procedural_count > 0 && ` (mais ${votStats.votacoes_procedural_count} despacho${votStats.votacoes_procedural_count !== 1 ? "s" : ""}/procedural${votStats.votacoes_procedural_count !== 1 ? "is" : ""} excluído${votStats.votacoes_procedural_count !== 1 ? "s" : ""} do cálculo)`}
+                        {votStats.votacoes_merito_count < 5 && " — amostra pequena, um único resultado pode dominar o percentual."}
+                      </p>
+                    </div>
+                  ) : (
+                    <p className="text-sm text-slate-400">
+                      Nenhuma votação de mérito com voto individual da bancada nos últimos 6 meses — sem base para calcular uma taxa de aprovação confiável.
+                    </p>
+                  )}
 
                   {votStats.votacoes.length > 0 && (
                     <div>
@@ -606,17 +618,23 @@ export function PartidoProfilePage() {
               {statusGastos === "loading" && <StatsSkeleton />}
               {statusGastos === "error" && <p className="text-sm text-slate-400">Não foi possível carregar os gastos.</p>}
               {statusGastos === "success" && gastos && (
-                <div className="space-y-4">
-                  <div className="inline-flex items-baseline gap-2 rounded-xl border border-slate-100 bg-slate-50 px-4 py-3">
-                    <span className="text-xs text-slate-500">Total em 2025:</span>
-                    <span className={`text-2xl font-bold ${bg.replace("bg-", "text-")}`}>{fmtBRL(gastos.total)}</span>
+                gastos.despesas_indisponivel ? (
+                  <p className="text-sm text-slate-400">
+                    Dado indisponível no momento — a fonte oficial (Câmara dos Deputados) não retornou registros de despesas para a bancada.
+                  </p>
+                ) : (
+                  <div className="space-y-4">
+                    <div className="inline-flex items-baseline gap-2 rounded-xl border border-slate-100 bg-slate-50 px-4 py-3">
+                      <span className="text-xs text-slate-500">Total em {gastos.ano ?? new Date().getFullYear()}:</span>
+                      <span className={`text-2xl font-bold ${bg.replace("bg-", "text-")}`}>{fmtBRL(gastos.total)}</span>
+                    </div>
+                    {gastos.categorias.length > 0 ? (
+                      <BarChart gastos={gastos} accentBg={bg} />
+                    ) : (
+                      <p className="text-sm text-slate-400">Nenhum gasto registrado.</p>
+                    )}
                   </div>
-                  {gastos.categorias.length > 0 ? (
-                    <BarChart gastos={gastos} accentBg={bg} />
-                  ) : (
-                    <p className="text-sm text-slate-400">Nenhum gasto registrado.</p>
-                  )}
-                </div>
+                )
               )}
             </SectionCard>
 

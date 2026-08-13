@@ -169,12 +169,15 @@ export interface PartidoVotacao {
   sim: number;
   nao: number;
   abstencao: number;
+  merito: boolean;
 }
 
 export interface PartidoVotacoesStats {
   total_sim: number;
   total_nao: number;
   total_abstencao: number;
+  votacoes_merito_count: number;
+  votacoes_procedural_count: number;
   votacoes: PartidoVotacao[];
 }
 
@@ -187,6 +190,7 @@ export interface PartidoGastos {
   total: number;
   categorias: PartidoGastosCategoria[];
   ano?: number;
+  despesas_indisponivel: boolean;
 }
 
 export interface VotacaoVotoPartido {
@@ -215,8 +219,8 @@ export interface CompararDeputado {
   proposicoes_total: number;
   proposicoes_por_tipo: Record<string, number>;
   gastos_total: number;
+  despesas_indisponivel: boolean;
   patrimonio_total: number;
-  score_atividade: number;
 }
 
 export interface CompararResult {
