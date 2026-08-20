@@ -141,12 +141,14 @@ function DeputadoSelector({
   label,
   side,
   all,
+  loadingAll,
   selected,
   onSelect,
 }: {
   label: string;
   side: "a" | "b";
   all: Deputado[];
+  loadingAll: boolean;
   selected: Deputado | null;
   onSelect: (d: Deputado | null) => void;
 }) {
@@ -249,7 +251,7 @@ function DeputadoSelector({
             </svg>
             <input
               type="text"
-              placeholder="Buscar por nome…"
+              placeholder={loadingAll ? "Carregando deputados…" : "Buscar por nome…"}
               value={query}
               onChange={(e) => { setQuery(e.target.value); setOpen(true); }}
               onFocus={() => setOpen(true)}
@@ -269,7 +271,9 @@ function DeputadoSelector({
                 className="overflow-hidden border-t border-slate-100"
               >
                 {filtered.length === 0 ? (
-                  <li className="px-4 py-4 text-center text-xs text-slate-400">Nenhum resultado encontrado</li>
+                  <li className="px-4 py-4 text-center text-xs text-slate-400">
+                    {loadingAll ? "Carregando lista de deputados…" : "Nenhum resultado encontrado"}
+                  </li>
                 ) : (
                   filtered.map((d) => (
                     <li key={d.id} className="border-b border-slate-50 last:border-0">
@@ -520,10 +524,10 @@ function TipoBreakdown({ a, b }: { a: CompararDeputado; b: CompararDeputado }) {
 
   if (allTipos.length === 0) return null;
 
-  // Cada contagem por tipo agora é real (segunda chamada à API filtrada por
-  // siglaTipo, não a amostra de 100 misturados) — a soma só fica abaixo do
-  // total quando existe um tipo raro demais pra aparecer nas proposições
-  // mais recentes (a amostra usada só pra descobrir quais tipos consultar).
+  // Contagem por tipo vem de paginar o histórico inteiro do deputado (não
+  // uma amostra) — a soma deveria sempre bater com o total. Se não bater,
+  // é sinal de falha parcial de rede numa das páginas buscadas, não de tipo
+  // raro fora de amostra (esse problema foi eliminado, não só amenizado).
   const sumTipoA = Object.values(a.proposicoes_por_tipo).reduce((s, n) => s + n, 0);
   const sumTipoB = Object.values(b.proposicoes_por_tipo).reduce((s, n) => s + n, 0);
 
@@ -537,9 +541,9 @@ function TipoBreakdown({ a, b }: { a: CompararDeputado; b: CompararDeputado }) {
       </div>
       {(sumTipoA < a.proposicoes_total || sumTipoB < b.proposicoes_total) && (
         <p className="border-b border-slate-100 bg-amber-50 px-5 py-2 text-[11px] leading-relaxed text-amber-700">
-          As contagens por tipo abaixo são reais, mas um tipo raro demais para aparecer entre as proposições mais
-          recentes de {a.nome.split(" ")[0]} ou {b.nome.split(" ")[0]} pode não estar listado — a soma por tipo aqui
-          pode ficar um pouco abaixo do total geral acima.
+          A soma das contagens por tipo abaixo ficou abaixo do total geral acima — sinal de falha parcial ao
+          carregar o histórico completo de {a.nome.split(" ")[0]} ou {b.nome.split(" ")[0]} na fonte oficial, não de
+          amostragem (o cálculo já pagina o histórico inteiro).
         </p>
       )}
       <div className="grid grid-cols-1 gap-3 p-5 sm:grid-cols-2">
@@ -657,13 +661,16 @@ function ComparisonView({ result }: { result: CompararResult }) {
 
 export function CompararPage() {
   const [all, setAll] = useState<Deputado[]>([]);
+  const [statusAll, setStatusAll] = useState<ApiStatus>("loading");
   const [selA, setSelA] = useState<Deputado | null>(null);
   const [selB, setSelB] = useState<Deputado | null>(null);
   const [result, setResult] = useState<CompararResult | null>(null);
   const [status, setStatus] = useState<ApiStatus>("idle");
 
   useEffect(() => {
-    api.camara.deputados().then(setAll).catch(() => {});
+    api.camara.deputados()
+      .then((d) => { setAll(d); setStatusAll("success"); })
+      .catch(() => setStatusAll("error"));
   }, []);
 
   useEffect(() => {
@@ -690,7 +697,7 @@ export function CompararPage() {
         <div className="mb-8">
           <h1 className="text-2xl font-extrabold text-slate-900">Comparar Políticos</h1>
           <p className="mt-1 text-sm text-slate-500">
-            Selecione dois deputados e compare patrimônio, proposições, gastos e índice de atividade legislativa.
+            Selecione dois deputados e compare patrimônio, proposições e gastos.
           </p>
         </div>
 
@@ -700,6 +707,7 @@ export function CompararPage() {
             label="Deputado A"
             side="a"
             all={all}
+            loadingAll={statusAll === "loading"}
             selected={selA}
             onSelect={(d) => {
               if (d && selB && d.id === selB.id) return;
@@ -715,6 +723,7 @@ export function CompararPage() {
             label="Deputado B"
             side="b"
             all={all}
+            loadingAll={statusAll === "loading"}
             selected={selB}
             onSelect={(d) => {
               if (d && selA && d.id === selA.id) return;

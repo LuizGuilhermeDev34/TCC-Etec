@@ -1,13 +1,24 @@
 """
-Regressao de 2026-08-13 (revisao do Comparador pelo Aether): a quebra por
-tipo de proposicao no comparador somava só a amostra de 100 itens mais
-recentes (ex: REQ 53, PL 24...) enquanto o total exibido ao lado vinha do
-link "last" da paginacao (ex: 3822) -- os dois numeros pareciam se
-contradizer. Aether sugeriu reaproveitar o mesmo truque do link "last" por
-tipo, em vez de só anexar uma ressalva de amostra. get_deputado_proposicoes_por_tipo
-faz uma chamada por tipo (filtrada por siglaTipo) e usa o link "last" pra
-obter a contagem REAL daquele tipo -- na pratica quase sempre uma chamada só,
-já que um tipo isolado raramente passa de 100 itens.
+Regressao de 2026-08-13 (revisao do Comparador pelo Aether, duas rodadas):
+
+Rodada 1: a quebra por tipo de proposicao no comparador somava só a amostra
+de 100 itens mais recentes (ex: REQ 53, PL 24...) enquanto o total exibido
+ao lado vinha do link "last" da paginacao (ex: 3822) -- os dois numeros
+pareciam se contradizer.
+
+Rodada 2 (achado do Aether que invalidou a primeira correcao): a primeira
+tentativa buscava a contagem real só para os tipos que apareciam na amostra
+de 100 mais recentes (ordenados por ano). Isso falhava exatamente pro caso
+mais importante -- comparando Arthur Lira x Adriana Ventura, a soma por tipo
+ficava mais de 50% abaixo do total pros dois, e o tipo ausente era RIC, o
+MAIS numeroso da Adriana (2000+ concentrados em 2023, nada depois). Um tipo
+concentrado fora da janela de 100 mais recentes fica totalmente invisivel,
+nao "raro" como a ressalva dizia.
+
+Correcao definitiva: get_deputado_proposicoes_por_tipo pagina o historico
+INTEIRO do deputado (nao deriva a lista de tipos de amostra nenhuma) e conta
+por tipo em cada pagina -- a soma sempre bate com o total, nao importa em
+que ano um tipo esteja concentrado.
 """
 import pytest
 
@@ -17,80 +28,76 @@ from app.services import camara_service
 @pytest.fixture(autouse=True)
 def _clear_cache():
     camara_service._cache.clear()
+    camara_service._cache_proposicoes_por_tipo.clear()
     yield
     camara_service._cache.clear()
+    camara_service._cache_proposicoes_por_tipo.clear()
 
 
-class _FakeResponse:
-    def __init__(self, dados, links=None):
-        self.is_success = True
-        self._dados = dados
-        self._links = links or []
-
-    def json(self):
-        return {"dados": self._dados, "links": self._links}
+def _item(sigla_tipo):
+    return {"siglaTipo": sigla_tipo}
 
 
-class _FakeClient:
-    def __init__(self, first_page, last_page=None):
-        self._first_page = first_page
-        self._last_page = last_page
-        self.calls = 0
+async def test_uma_pagina_conta_direto_sem_chamada_extra(monkeypatch):
+    async def fake_fetch(path, params=None):
+        return {
+            "dados": [_item("REQ")] * 53 + [_item("PL")] * 24,
+            "links": [{"rel": "self", "href": "https://x/proposicoes?pagina=1"}],
+        }
 
-    async def get(self, url, params=None, timeout=None):
-        self.calls += 1
-        if params.get("pagina"):
-            return _FakeResponse(self._last_page)
-        return _FakeResponse(self._first_page["dados"], self._first_page.get("links", []))
-
-
-async def test_fetch_tipo_total_uma_pagina_nao_precisa_de_segunda_chamada():
-    client = _FakeClient(first_page={"dados": [{"id": i} for i in range(53)], "links": []})
-
-    sigla, total = await camara_service._fetch_proposicao_tipo_total(client, 204528, "REQ")
-
-    assert sigla == "REQ"
-    assert total == 53
-    assert client.calls == 1
-
-
-async def test_fetch_tipo_total_com_mais_de_100_usa_link_last():
-    client = _FakeClient(
-        first_page={
-            "dados": [{"id": i} for i in range(100)],
-            "links": [{"rel": "last", "href": "https://x/proposicoes?siglaTipo=RIC&pagina=32&itens=100"}],
-        },
-        last_page=[{"id": i} for i in range(15)],
-    )
-
-    sigla, total = await camara_service._fetch_proposicao_tipo_total(client, 204528, "RIC")
-
-    assert sigla == "RIC"
-    assert total == 31 * 100 + 15  # 3115
-    assert client.calls == 2
-
-
-async def test_get_deputado_proposicoes_por_tipo_agrega_varios_tipos(monkeypatch):
-    async def fake_fetch(client, deputado_id, sigla_tipo):
-        return sigla_tipo, {"REQ": 53, "PL": 24, "RIC": 3115}[sigla_tipo]
-
-    monkeypatch.setattr(camara_service, "_fetch_proposicao_tipo_total", fake_fetch)
-
-    resultado = await camara_service.get_deputado_proposicoes_por_tipo(204528, ["REQ", "PL", "RIC"])
-
-    assert resultado == {"REQ": 53, "PL": 24, "RIC": 3115}
-
-
-async def test_get_deputado_proposicoes_por_tipo_lista_vazia_nao_chama_nada(monkeypatch):
     calls = []
 
-    async def fake_fetch(client, deputado_id, sigla_tipo):
-        calls.append(sigla_tipo)
-        return sigla_tipo, 0
+    async def fake_pagina(client, params, pagina):
+        calls.append(pagina)
+        return []
 
-    monkeypatch.setattr(camara_service, "_fetch_proposicao_tipo_total", fake_fetch)
+    monkeypatch.setattr(camara_service, "_fetch_camara_json", fake_fetch)
+    monkeypatch.setattr(camara_service, "_fetch_proposicoes_pagina", fake_pagina)
 
-    resultado = await camara_service.get_deputado_proposicoes_por_tipo(1, [])
+    resultado = await camara_service.get_deputado_proposicoes_por_tipo(1)
 
-    assert resultado == {}
-    assert calls == []
+    assert resultado == {"REQ": 53, "PL": 24}
+    assert calls == []  # nenhuma página extra buscada
+
+
+async def test_tipo_concentrado_fora_da_primeira_pagina_nao_fica_ausente(monkeypatch):
+    """O caso exato reportado: um tipo (RIC) concentrado inteiramente numa
+    página que não é a primeira (ordenada por ano) não pode desaparecer da
+    contagem -- a soma final tem que bater com o total real."""
+
+    async def fake_fetch(path, params=None):
+        return {
+            "dados": [_item("PL")] * 100,  # página 1: só PL (anos recentes)
+            "links": [{"rel": "last", "href": "https://x/proposicoes?pagina=3&itens=100"}],
+        }
+
+    async def fake_pagina(client, params, pagina):
+        if pagina == 2:
+            return [_item("RIC")] * 100  # RIC concentrado aqui, fora da amostra de 100 recentes
+        if pagina == 3:
+            return [_item("RIC")] * 22
+        return []
+
+    monkeypatch.setattr(camara_service, "_fetch_camara_json", fake_fetch)
+    monkeypatch.setattr(camara_service, "_fetch_proposicoes_pagina", fake_pagina)
+
+    resultado = await camara_service.get_deputado_proposicoes_por_tipo(204528)
+
+    assert resultado["PL"] == 100
+    assert resultado["RIC"] == 122  # não fica ausente nem sub-representado
+    assert sum(resultado.values()) == 222
+
+
+async def test_resultado_fica_em_cache(monkeypatch):
+    calls = {"n": 0}
+
+    async def fake_fetch(path, params=None):
+        calls["n"] += 1
+        return {"dados": [_item("PL")] * 10, "links": []}
+
+    monkeypatch.setattr(camara_service, "_fetch_camara_json", fake_fetch)
+
+    await camara_service.get_deputado_proposicoes_por_tipo(1)
+    await camara_service.get_deputado_proposicoes_por_tipo(1)
+
+    assert calls["n"] == 1

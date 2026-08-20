@@ -26,6 +26,9 @@ _cache_deputados = SimpleCache(ttl_seconds=60 * 60 * 6)
 # um /votos por votação de plenário) — TTL longo evita refazer o fan-out
 # inteiro a cada visita de perfil.
 _cache_votacoes_historico = SimpleCache(ttl_seconds=60 * 60 * 24 * 7)
+# Contagem por tipo pagina o histórico inteiro do deputado (caro para autores
+# de milhares de proposições) — TTL longo pelo mesmo motivo do cache acima.
+_cache_proposicoes_por_tipo = SimpleCache(ttl_seconds=60 * 60 * 24)
 _CAMARA_BASE = "https://dadosabertos.camara.leg.br/api/v2"
 
 # A Câmara às vezes embute "Sim: 87; Não: 301; Total: 388." no fim da descricao
@@ -342,63 +345,92 @@ async def get_deputado_proposicoes(deputado_id: int) -> tuple[List[Proposicao], 
     return resultado
 
 
-async def _fetch_proposicao_tipo_total(
+async def _fetch_proposicoes_pagina(
     client: httpx.AsyncClient,
-    deputado_id: int,
-    sigla_tipo: str,
-) -> tuple[str, int]:
-    """Total real de proposições de um tipo específico do deputado — mesmo
-    truque do link "last" usado em get_deputado_proposicoes, mas por tipo.
-    Como cada tipo isolado raramente passa de 100 itens, na prática é uma
-    chamada só (a segunda, na última página, só dispara se esse tipo
-    específico também estourar o teto)."""
-    params = {"idDeputadoAutor": deputado_id, "siglaTipo": sigla_tipo, "itens": 100}
-    try:
-        resp = await client.get(f"{_CAMARA_BASE}/proposicoes", params=params, timeout=12.0)
-        if not resp.is_success:
-            return sigla_tipo, 0
-        payload = resp.json()
-        total = len(payload.get("dados", []))
-        last_href = next((l.get("href") for l in payload.get("links", []) if l.get("rel") == "last"), None)
-        if last_href:
-            last_pagina = _parse_pagina_from_link(last_href)
-            if last_pagina and last_pagina > 1:
-                last_resp = await client.get(
-                    f"{_CAMARA_BASE}/proposicoes", params={**params, "pagina": last_pagina}, timeout=12.0
-                )
-                if last_resp.is_success:
-                    total = (last_pagina - 1) * 100 + len(last_resp.json().get("dados", []))
-        return sigla_tipo, total
-    except Exception:
-        return sigla_tipo, 0
+    params: Dict[str, Any],
+    pagina: int,
+) -> List[Dict[str, Any]]:
+    """Busca uma página do histórico de proposições, com uma retentativa.
+
+    Achado ao vivo: rodada isolada (só esta função) sempre fechava a soma
+    exata; rodada dentro do comparador (8 buscas concorrentes por deputado
+    x2 lados, mais o próprio fan-out interno em lotes de 10) perdia
+    sistematicamente exatamente 1 página inteira (100 itens) — um timeout
+    transitório sob concorrência, engolido em silêncio pelo except Exception
+    original. Sem sinal nenhum na tela, isso era o mesmo padrão de "engolir
+    erro de API e produzir dado errado" já visto antes no projeto. Uma
+    retentativa cobre a maioria dos casos; a ressalva de "soma abaixo do
+    total" no front continua como rede de segurança para os raros casos em
+    que a página falha duas vezes seguidas."""
+    for tentativa in range(2):
+        try:
+            resp = await client.get(f"{_CAMARA_BASE}/proposicoes", params={**params, "pagina": pagina}, timeout=12.0)
+            if resp.is_success:
+                return resp.json().get("dados", [])
+        except Exception:
+            pass
+        if tentativa == 0:
+            await asyncio.sleep(0.5)
+    return []
 
 
-async def get_deputado_proposicoes_por_tipo(deputado_id: int, tipos: List[str]) -> Dict[str, int]:
-    """Contagem REAL (não a amostra de 100) de proposições por tipo, para os
-    tipos informados. Usado pelo comparador — sem isso, "3822 total" e um
-    detalhamento que soma 97 (a amostra) apareciam lado a lado como se se
-    contradissessem."""
-    if not tipos:
-        return {}
+async def get_deputado_proposicoes_por_tipo(deputado_id: int) -> Dict[str, int]:
+    """Contagem REAL de proposições por tipo, paginando o histórico inteiro
+    do deputado — não uma amostra.
 
-    cache_key = f"dep_prop_por_tipo:{deputado_id}:{','.join(sorted(tipos))}"
-    cached = _cache.get(cache_key)
+    Regressão de 2026-08-13 (achado do Aether): a primeira versão derivava a
+    lista de tipos a consultar da amostra de 100 mais recentes (ordenadas
+    por ano). Isso parecia barato, mas quebrava justamente para o caso mais
+    importante: um tipo concentrado numa janela de tempo fora da amostra
+    (ex: 2000+ RIC apresentados só em 2023, nada depois) ficava totalmente
+    ausente do detalhamento — não sub-representado, ausente — enquanto o
+    texto dizia "tipo raro". O tipo mais volumoso de um deputado é
+    exatamente o tipo com mais chance de ficar de fora de uma amostra
+    ordenada por ano recente, porque uma leva grande concentrada num ano
+    específico lota as 100 vagas de outros anos.
+
+    A única forma de garantir que a soma bate com o total é não confiar em
+    amostra nenhuma: pagina o histórico completo (teto de 100 por página,
+    igual get_deputado_proposicoes) e conta por tipo em cada página. Custo
+    real é proporcional ao volume do deputado (poucas chamadas pra maioria,
+    ~39 para um caso extremo como o de 3822 proposições) — cache de 24h
+    porque proposições antigas não mudam e a lista real dificilmente varia
+    dia a dia."""
+    cache_key = f"dep_prop_por_tipo:{deputado_id}"
+    cached = _cache_proposicoes_por_tipo.get(cache_key)
     if cached is not None:
         return cached
 
-    async with httpx.AsyncClient(timeout=12.0) as client:
-        results = await asyncio.gather(
-            *[_fetch_proposicao_tipo_total(client, deputado_id, t) for t in tipos],
-            return_exceptions=True,
-        )
+    params: Dict[str, Any] = {"idDeputadoAutor": deputado_id, "itens": 100, "ordem": "DESC", "ordenarPor": "ano"}
+    payload = await _fetch_camara_json("/proposicoes", params=params)
+    items = payload.get("dados", [])
 
-    resultado: Dict[str, int] = {}
-    for r in results:
-        if isinstance(r, tuple):
-            resultado[r[0]] = r[1]
+    contagem: Dict[str, int] = {}
+    for item in items:
+        t = item.get("siglaTipo", "")
+        contagem[t] = contagem.get(t, 0) + 1
 
-    _cache.set(cache_key, resultado)
-    return resultado
+    last_href = next((l.get("href") for l in payload.get("links", []) if l.get("rel") == "last"), None)
+    last_pagina = _parse_pagina_from_link(last_href) if last_href else None
+    if last_pagina and last_pagina > 1:
+        paginas = list(range(2, last_pagina + 1))
+        async with httpx.AsyncClient(timeout=12.0) as client:
+            for i in range(0, len(paginas), 10):
+                batch = paginas[i : i + 10]
+                batch_results = await asyncio.gather(
+                    *[_fetch_proposicoes_pagina(client, params, p) for p in batch],
+                    return_exceptions=True,
+                )
+                for r in batch_results:
+                    if isinstance(r, list):
+                        for item in r:
+                            t = item.get("siglaTipo", "")
+                            contagem[t] = contagem.get(t, 0) + 1
+                if i + 10 < len(paginas):
+                    await asyncio.sleep(0.2)
+
+    _cache_proposicoes_por_tipo.set(cache_key, contagem)
+    return contagem
 
 
 async def _fetch_proposicao_status(

@@ -14,13 +14,6 @@ from ....services.tse_service import get_patrimonio_deputado_federal
 router = APIRouter(prefix="/comparar", tags=["comparar"])
 
 
-def _por_tipo(proposicoes: list) -> Dict[str, int]:
-    tipos: Dict[str, int] = {}
-    for p in proposicoes:
-        tipos[p.sigla_tipo] = tipos.get(p.sigla_tipo, 0) + 1
-    return dict(sorted(tipos.items(), key=lambda x: x[1], reverse=True))
-
-
 async def _get_deputado_data(dep_id: int) -> Dict[str, Any]:
     # Detail primeiro — nome é necessário para buscar patrimônio no TSE
     try:
@@ -28,31 +21,31 @@ async def _get_deputado_data(dep_id: int) -> Dict[str, Any]:
     except Exception as exc:
         raise HTTPException(status_code=404, detail=f"Deputado {dep_id} não encontrado") from exc
 
-    # Proposições, despesas e patrimônio em paralelo
-    proposicoes_result, despesas, patrimonio = await asyncio.gather(
+    # Proposições, despesas, patrimônio e contagem por tipo em paralelo.
+    # proposicoes_por_tipo pagina o histórico inteiro do deputado (ver
+    # get_deputado_proposicoes_por_tipo) — não deriva a lista de tipos da
+    # amostra de 100 mais recentes, que escondia tipos concentrados fora
+    # dessa janela (achado real: RIC, o tipo MAIS numeroso de uma deputada,
+    # ficava totalmente ausente do detalhamento por estar concentrado num
+    # único ano fora da amostra recente).
+    proposicoes_result, despesas, patrimonio, proposicoes_por_tipo = await asyncio.gather(
         get_deputado_proposicoes(dep_id),
         get_deputado_despesas(dep_id),
         get_patrimonio_deputado_federal(detail.nome, detail.nome_civil or ""),
+        get_deputado_proposicoes_por_tipo(dep_id),
         return_exceptions=True,
     )
 
     if isinstance(proposicoes_result, tuple):
-        proposicoes, proposicoes_total_real = proposicoes_result
+        _, proposicoes_total_real = proposicoes_result
     else:
-        proposicoes, proposicoes_total_real = [], 0
+        proposicoes_total_real = 0
     despesas = despesas if isinstance(despesas, list) else []
     patrimonio = patrimonio if isinstance(patrimonio, dict) else {}
+    proposicoes_por_tipo = proposicoes_por_tipo if isinstance(proposicoes_por_tipo, dict) else {}
 
     gastos_total = sum(d.valor_liquido for d in despesas if d.valor_liquido > 0)
     patrimonio_total = patrimonio.get("total", 0.0)
-
-    # Contagem real por tipo (não a amostra de 100) — evita mostrar "3822
-    # total" ao lado de um detalhamento que soma 97, como se os números se
-    # contradissessem. Só busca os tipos que já apareceram na amostra: um
-    # tipo raro demais pra aparecer nos 100 itens mais recentes (ordenados
-    # por ano) fica de fora do detalhamento, mesma ressalva de sempre.
-    tipos_na_amostra = list(_por_tipo(proposicoes).keys())
-    proposicoes_por_tipo = await get_deputado_proposicoes_por_tipo(detail.id, tipos_na_amostra)
 
     return {
         "id": detail.id,

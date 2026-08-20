@@ -27,6 +27,9 @@ async def test_get_deputado_data_marca_despesas_indisponivel_quando_vazio(monkey
     async def fake_proposicoes(dep_id):
         return [], 0
 
+    async def fake_por_tipo(dep_id):
+        return {}
+
     async def fake_despesas(dep_id):
         return []
 
@@ -35,6 +38,7 @@ async def test_get_deputado_data_marca_despesas_indisponivel_quando_vazio(monkey
 
     monkeypatch.setattr(comparar, "get_deputado_detail", fake_detail)
     monkeypatch.setattr(comparar, "get_deputado_proposicoes", fake_proposicoes)
+    monkeypatch.setattr(comparar, "get_deputado_proposicoes_por_tipo", fake_por_tipo)
     monkeypatch.setattr(comparar, "get_deputado_despesas", fake_despesas)
     monkeypatch.setattr(comparar, "get_patrimonio_deputado_federal", fake_patrimonio)
 
@@ -53,6 +57,9 @@ async def test_get_deputado_data_com_despesas_reais_nao_marca_indisponivel(monke
     async def fake_proposicoes(dep_id):
         return [], 0
 
+    async def fake_por_tipo(dep_id):
+        return {}
+
     async def fake_despesas(dep_id):
         return [DeputadoDespesa(
             ano=2026, mes=1, tipo_despesa="Combustiveis", valor_liquido=250.0,
@@ -64,6 +71,7 @@ async def test_get_deputado_data_com_despesas_reais_nao_marca_indisponivel(monke
 
     monkeypatch.setattr(comparar, "get_deputado_detail", fake_detail)
     monkeypatch.setattr(comparar, "get_deputado_proposicoes", fake_proposicoes)
+    monkeypatch.setattr(comparar, "get_deputado_proposicoes_por_tipo", fake_por_tipo)
     monkeypatch.setattr(comparar, "get_deputado_despesas", fake_despesas)
     monkeypatch.setattr(comparar, "get_patrimonio_deputado_federal", fake_patrimonio)
 
