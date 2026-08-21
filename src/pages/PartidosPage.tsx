@@ -4,7 +4,7 @@ import { Link } from "react-router-dom";
 import { PageTransition } from "../components/PageTransition";
 import { LoadingSpinner } from "../components/LoadingSpinner";
 import { OfflineBanner } from "../components/OfflineBanner";
-import { api } from "../services/api";
+import { api, classifyApiError } from "../services/api";
 import { containerVariants, slideInLeft, cardHover } from "../animations";
 import type { ApiStatus, Partido } from "../types";
 
@@ -45,7 +45,7 @@ export function PartidosPage() {
     setStatus("loading");
     api.camara.partidos()
       .then((d) => { setPartidos(d); setStatus("success"); })
-      .catch((e: Error) => setStatus(e.message === "offline" ? "offline" : "error"));
+      .catch((e: Error) => setStatus(classifyApiError(e)));
   }, []);
 
   const filtered = partidos.filter(
@@ -65,12 +65,15 @@ export function PartidosPage() {
         </motion.div>
 
         {status === "loading" && <LoadingSpinner message="Carregando partidos..." count={9} />}
-        {(status === "offline" || status === "error") && (
+        {(status === "offline" || status === "error" || status === "rate_limited") && (
           <OfflineBanner
             source="API da Câmara"
+            kind={status === "rate_limited" ? "rate_limited" : "offline"}
             onRetry={() => {
               setStatus("loading");
-              api.camara.partidos().then(setPartidos).then(() => setStatus("success")).catch(() => setStatus("offline"));
+              api.camara.partidos()
+                .then((d) => { setPartidos(d); setStatus("success"); })
+                .catch((e: Error) => setStatus(classifyApiError(e)));
             }}
           />
         )}

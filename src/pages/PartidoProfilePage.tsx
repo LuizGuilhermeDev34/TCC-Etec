@@ -4,7 +4,7 @@ import { motion } from "framer-motion";
 import { PageTransition } from "../components/PageTransition";
 import { LoadingSpinner } from "../components/LoadingSpinner";
 import { OfflineBanner } from "../components/OfflineBanner";
-import { api } from "../services/api";
+import { api, classifyApiError } from "../services/api";
 import type { ApiStatus, Deputado, Partido, PartidoGastos, PartidoLideranca, PartidoLiderInfo, PartidoVotacoesStats } from "../types";
 
 const SIGLA_COLORS: Record<string, { bg: string; text: string; ring: string }> = {
@@ -159,7 +159,16 @@ function VotacaoRow({ v }: { v: PartidoVotacoesStats["votacoes"][0] }) {
     <div className={`rounded-xl border border-slate-100 bg-white border-l-4 ${border} px-4 py-3 shadow-sm`}>
       {/* Top row */}
       <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-        <span className={`rounded-full px-2.5 py-0.5 text-[11px] font-bold ${cls}`}>{label}</span>
+        <div className="flex items-center gap-1.5">
+          <span className={`rounded-full px-2.5 py-0.5 text-[11px] font-bold ${cls}`}>{label}</span>
+          {/* A lista abaixo mostra as últimas participadas (mérito + trâmite),
+              mas o total/percentual acima soma só mérito — sem esta marca, os
+              números de cada linha não batem com o total e parecem
+              contraditórios. */}
+          <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${v.merito ? "bg-blue-50 text-blue-600" : "bg-slate-100 text-slate-400"}`}>
+            {v.merito ? "mérito" : "trâmite"}
+          </span>
+        </div>
         <span className="text-[11px] text-slate-400">{fmtDate(v.data)}</span>
       </div>
 
@@ -359,7 +368,7 @@ export function PartidoProfilePage() {
     setStatusPartido("loading");
     api.camara.partidoById(nid)
       .then((p) => { if (!cancelled) { setPartido(p); setStatusPartido("success"); } })
-      .catch((e: Error) => { if (!cancelled) setStatusPartido(e.message === "offline" ? "offline" : "error"); });
+      .catch((e: Error) => { if (!cancelled) setStatusPartido(classifyApiError(e)); });
 
     setStatusDep("loading");
     api.camara.deputados()
@@ -424,13 +433,20 @@ export function PartidoProfilePage() {
           Voltar
         </motion.button>
 
-        {(statusPartido === "offline" || statusPartido === "error") && (
-          <OfflineBanner source="API da Câmara" onRetry={() => {
+        {statusPartido === "not_found" && (
+          <div className="rounded-lg border border-slate-200 bg-slate-50 p-6 text-center">
+            <h3 className="font-semibold text-slate-700">Partido não encontrado</h3>
+            <p className="mt-1 text-sm text-slate-500">Não existe partido com este ID na base atual da Câmara.</p>
+          </div>
+        )}
+
+        {(statusPartido === "offline" || statusPartido === "error" || statusPartido === "rate_limited") && (
+          <OfflineBanner source="API da Câmara" kind={statusPartido === "rate_limited" ? "rate_limited" : "offline"} onRetry={() => {
             if (!id) return;
             setStatusPartido("loading");
             api.camara.partidoById(Number(id))
               .then((p) => { setPartido(p); setStatusPartido("success"); })
-              .catch((e: Error) => setStatusPartido(e.message === "offline" ? "offline" : "error"));
+              .catch((e: Error) => setStatusPartido(classifyApiError(e)));
           }} />
         )}
 

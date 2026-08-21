@@ -40,7 +40,7 @@ async def test_nao_corta_votacoes_em_20(monkeypatch):
         return votacoes
 
     async def fake_get_proposicoes(ano, tipo, itens):
-        return []
+        return [], 0
 
     monkeypatch.setattr(activity_service, "get_votacoes_recentes", fake_get_votacoes)
     monkeypatch.setattr(activity_service, "get_proposicoes", fake_get_proposicoes)
@@ -59,7 +59,7 @@ async def test_pede_ate_100_itens_e_envia_data_fim(monkeypatch):
         return []
 
     async def fake_get_proposicoes(ano, tipo, itens):
-        return []
+        return [], 0
 
     monkeypatch.setattr(activity_service, "get_votacoes_recentes", fake_get_votacoes)
     monkeypatch.setattr(activity_service, "get_proposicoes", fake_get_proposicoes)
@@ -77,7 +77,7 @@ async def test_repassa_merito_para_a_activity(monkeypatch):
         return votacoes
 
     async def fake_get_proposicoes(ano, tipo, itens):
-        return []
+        return [], 0
 
     monkeypatch.setattr(activity_service, "get_votacoes_recentes", fake_get_votacoes)
     monkeypatch.setattr(activity_service, "get_proposicoes", fake_get_proposicoes)

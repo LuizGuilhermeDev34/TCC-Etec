@@ -4,7 +4,7 @@ import { motion } from "framer-motion";
 import { PageTransition } from "../components/PageTransition";
 import { LoadingSpinner } from "../components/LoadingSpinner";
 import { OfflineBanner } from "../components/OfflineBanner";
-import { api } from "../services/api";
+import { api, classifyApiError } from "../services/api";
 import { containerVariants, slideInLeft, cardHover } from "../animations";
 import type { ApiStatus, Deputado, Senador } from "../types";
 
@@ -186,18 +186,24 @@ export function PoliticosPage() {
     }
   }, [activeStatus]);
 
-  useEffect(() => {
+  function loadDeputados() {
     setStatusDep("loading");
     api.camara.deputados(57, uf).then((d) => { setDeputados(d); setStatusDep("success"); })
-      .catch((e: Error) => setStatusDep(e.message === "offline" ? "offline" : "error"));
-  }, [uf]);
+      .catch((e: Error) => setStatusDep(classifyApiError(e)));
+  }
+  useEffect(loadDeputados, [uf]);
 
+  function loadSenadores() {
+    setStatusSen("loading");
+    api.senado.senadores().then((d) => { setSenadores(d); setStatusSen("success"); })
+      .catch((e: Error) => setStatusSen(classifyApiError(e)));
+  }
   useEffect(() => {
     if (tab !== "senadores" || senadores.length > 0) return;
     let cancelled = false;
     setStatusSen("loading");
     api.senado.senadores().then((d) => { if (!cancelled) { setSenadores(d); setStatusSen("success"); } })
-      .catch((e: Error) => { if (!cancelled) setStatusSen(e.message === "offline" ? "offline" : "error"); });
+      .catch((e: Error) => { if (!cancelled) setStatusSen(classifyApiError(e)); });
     return () => { cancelled = true; };
   }, [tab, senadores.length]);
 
@@ -257,6 +263,7 @@ export function PoliticosPage() {
               onChange={(e) => setUf(e.target.value)}
               className="h-9 rounded-lg border border-slate-200 bg-slate-50 px-3 text-sm text-slate-700 focus:border-blue-400 focus:outline-none focus:ring-1 focus:ring-blue-300"
             >
+              <option value="">Todos os estados</option>
               {UFS.map((u) => <option key={u} value={u}>{u}</option>)}
             </select>
           )}
@@ -291,8 +298,12 @@ export function PoliticosPage() {
         </div>
 
         {activeStatus === "loading" && <LoadingSpinner message={`Carregando...`} />}
-        {(activeStatus === "offline" || activeStatus === "error") && (
-          <OfflineBanner source={tab === "deputados" ? "API da Câmara" : "API do Senado"} />
+        {(activeStatus === "offline" || activeStatus === "error" || activeStatus === "rate_limited") && (
+          <OfflineBanner
+            source={tab === "deputados" ? "API da Câmara" : "API do Senado"}
+            kind={activeStatus === "rate_limited" ? "rate_limited" : "offline"}
+            onRetry={tab === "deputados" ? loadDeputados : loadSenadores}
+          />
         )}
 
         {activeStatus === "success" && (

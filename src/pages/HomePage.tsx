@@ -3,7 +3,7 @@ import { Link } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { PageTransition } from "../components/PageTransition";
 import { OfflineBanner } from "../components/OfflineBanner";
-import { api } from "../services/api";
+import { api, classifyApiError } from "../services/api";
 import type { Activity, ApiStatus, Deputado } from "../types";
 
 interface Stats { deputados: number; senadores: number; partidos: number; }
@@ -228,7 +228,7 @@ const FEATURES = [
       </svg>
     ),
     title: "Comparar Políticos",
-    desc: "Dois deputados lado a lado: proposições, patrimônio, gastos e índice de atividade legislativa.",
+    desc: "Dois deputados lado a lado: proposições por tipo, patrimônio e gastos, sem veredito de quem é \"melhor\".",
     to: "/comparar",
     color: "violet",
     badge: "Novo",
@@ -451,7 +451,8 @@ export function HomePage() {
   const [deputados, setDeputados] = useState<Deputado[]>([]);
   const [status, setStatus] = useState<ApiStatus>("loading");
 
-  useEffect(() => {
+  function load() {
+    setStatus("loading");
     Promise.all([
       api.camara.deputados(),
       api.senado.senadores(),
@@ -464,15 +465,19 @@ export function HomePage() {
         setActivities(ativ);
         setStatus("success");
       })
-      .catch((err: Error) => setStatus(err.message === "offline" ? "offline" : "error"));
-  }, []);
+      .catch((err: Error) => setStatus(classifyApiError(err)));
+  }
+
+  useEffect(load, []);
 
   return (
     <PageTransition direction="up">
       <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
 
-        {(status === "offline" || status === "error") && (
-          <div className="mb-6"><OfflineBanner source="backend (localhost:8000)" /></div>
+        {(status === "offline" || status === "error" || status === "rate_limited") && (
+          <div className="mb-6">
+            <OfflineBanner kind={status === "rate_limited" ? "rate_limited" : "offline"} onRetry={load} />
+          </div>
         )}
 
         <Hero deputados={deputados} stats={stats} />

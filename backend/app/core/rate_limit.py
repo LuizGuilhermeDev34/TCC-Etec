@@ -23,8 +23,10 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         self._hits[ip] = (window_start, count)
 
         if count > self._limit:
+            retry_after = max(1, int(self._window - (now - window_start)))
             return JSONResponse(
-                {"detail": "Muitas requisições. Tente novamente em instantes."},
+                {"detail": "Muitas requisições deste local. Tente novamente em instantes."},
                 status_code=429,
+                headers={"Retry-After": str(retry_after)},
             )
         return await call_next(request)

@@ -1,4 +1,4 @@
-import type { Activity, CompararResult, Deputado, DeputadoDetail, DeputadoDespesa, DeputadoEstadual, DeputadoVotacao, Partido, PartidoGastos, PartidoLideranca, PartidoVotacoesStats, Patrimonio, Proposicao, ProposicoesDeputado, Senador, Votacao, VotacaoVotos } from "../types";
+import type { ApiStatus, Activity, CompararResult, Deputado, DeputadoDetail, DeputadoDespesa, DeputadoEstadual, DeputadoVotacao, Partido, PartidoGastos, PartidoLideranca, PartidoVotacoesStats, Patrimonio, Proposicao, ProposicoesDeputado, Senador, Votacao, VotacaoVotos } from "../types";
 
 
 const BASE_URL = (import.meta.env.VITE_API_URL as string | undefined) ?? `/api/v1`;
@@ -10,6 +10,7 @@ async function fetchJSON<T>(path: string, timeoutMs = 30_000): Promise<T> {
   try {
     const response = await fetch(`${BASE_URL}${path}`, { signal: controller.signal });
 
+    if (response.status === 429) throw new Error("rate_limited");
     if (response.status === 503) throw new Error("offline");
     if (response.status === 404) throw new Error("not_found");
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
@@ -23,6 +24,19 @@ async function fetchJSON<T>(path: string, timeoutMs = 30_000): Promise<T> {
   } finally {
     clearTimeout(timer);
   }
+}
+
+// As telas tratavam qualquer erro fora de "not_found" como um "offline"
+// genérico — um 429 (limite de requisições deste visitante) e um 503 (fonte
+// externa fora do ar) são causas diferentes e pediam mensagens diferentes,
+// não a mesma acusação de "não foi possível conectar à API".
+export function classifyApiError(err: unknown): ApiStatus {
+  if (err instanceof Error) {
+    if (err.message === "rate_limited") return "rate_limited";
+    if (err.message === "offline") return "offline";
+    if (err.message === "not_found") return "not_found";
+  }
+  return "error";
 }
 
 export const api = {
@@ -48,7 +62,7 @@ export const api = {
     partidoGastos: (id: number) =>
       fetchJSON<PartidoGastos>(`/camara/partidos/${id}/gastos`),
     proposicoes: (ano = 2024, tipo = "PL", itens = 20) =>
-      fetchJSON<Proposicao[]>(`/camara/proposicoes?ano=${ano}&tipo=${tipo}&itens=${itens}`),
+      fetchJSON<ProposicoesDeputado>(`/camara/proposicoes?ano=${ano}&tipo=${tipo}&itens=${itens}`),
     votacoes: (itens = 30, dataInicio?: string, dataFim?: string, enriquecer?: boolean) =>
       fetchJSON<Votacao[]>(
         `/camara/votacoes?itens=${itens}${dataInicio ? `&data_inicio=${dataInicio}` : ""}${dataFim ? `&data_fim=${dataFim}` : ""}${enriquecer ? `&enriquecer=true` : ""}`,

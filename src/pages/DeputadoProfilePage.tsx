@@ -5,7 +5,7 @@ import { PageTransition } from "../components/PageTransition";
 import { LoadingSpinner } from "../components/LoadingSpinner";
 import { OfflineBanner } from "../components/OfflineBanner";
 import { PatrimonioCard } from "../components/PatrimonioCard";
-import { api } from "../services/api";
+import { api, classifyApiError } from "../services/api";
 import { slideInLeft, containerVariants } from "../animations";
 import type { ApiStatus, DeputadoDespesa, DeputadoDetail, Proposicao } from "../types";
 
@@ -79,7 +79,7 @@ export function DeputadoProfilePage() {
     setStatusDep("loading");
     api.camara.deputadoById(nid)
       .then((d) => { if (!cancelled) { setDeputado(d); setStatusDep("success"); } })
-      .catch((e: Error) => { if (!cancelled) setStatusDep(e.message === "offline" ? "offline" : "error"); });
+      .catch((e: Error) => { if (!cancelled) setStatusDep(classifyApiError(e)); });
 
     setStatusProp("loading");
     api.camara.deputadoProposicoes(nid)
@@ -134,13 +134,20 @@ export function DeputadoProfilePage() {
           Voltar
         </motion.button>
 
-        {(statusDep === "offline" || statusDep === "error") && (
-          <OfflineBanner source="API da Câmara" onRetry={() => {
+        {statusDep === "not_found" && (
+          <div className="rounded-lg border border-slate-200 bg-slate-50 p-6 text-center">
+            <h3 className="font-semibold text-slate-700">Deputado não encontrado</h3>
+            <p className="mt-1 text-sm text-slate-500">Não existe deputado com este ID na base atual da Câmara.</p>
+          </div>
+        )}
+
+        {(statusDep === "offline" || statusDep === "error" || statusDep === "rate_limited") && (
+          <OfflineBanner source="API da Câmara" kind={statusDep === "rate_limited" ? "rate_limited" : "offline"} onRetry={() => {
             if (!id) return;
             setStatusDep("loading");
             api.camara.deputadoById(Number(id))
               .then((d) => { setDeputado(d); setStatusDep("success"); })
-              .catch((e: Error) => setStatusDep(e.message === "offline" ? "offline" : "error"));
+              .catch((e: Error) => setStatusDep(classifyApiError(e)));
           }} />
         )}
 

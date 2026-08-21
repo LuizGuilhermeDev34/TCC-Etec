@@ -182,6 +182,36 @@ async def test_get_proposicoes_filtra_ementa_vazia(monkeypatch):
     monkeypatch.setattr(camara_service, "_fetch_camara_json", fake_fetch_list)
     monkeypatch.setattr(camara_service, "_fetch_proposicao_status", fake_status)
 
-    proposicoes = await camara_service.get_proposicoes(ano=2026, itens=10)
+    proposicoes, total = await camara_service.get_proposicoes(ano=2026, itens=10)
 
     assert [p.id for p in proposicoes] == [1]
+    assert total == 3
+
+
+async def test_get_proposicoes_total_real_vem_do_link_last(monkeypatch):
+    """Regressao de 2026-08-20: /leis mostrava '99 encontrado(s)' pra 2026,
+    quando o total real do ano e 21395 -- itens era teto de pagina, nao
+    contagem do periodo. Mesmo truque do link 'last' ja usado em
+    get_deputado_proposicoes."""
+
+    async def fake_fetch(path, params=None):
+        if params and params.get("pagina") == 214:
+            return {"dados": [{"id": i, "siglaTipo": "PL", "numero": i, "ano": 2026, "ementa": "x"} for i in range(95)]}
+        return {
+            "dados": [{"id": i, "siglaTipo": "PL", "numero": i, "ano": 2026, "ementa": "x"} for i in range(100)],
+            "links": [
+                {"rel": "self", "href": "https://x/proposicoes?pagina=1"},
+                {"rel": "last", "href": "https://x/proposicoes?ano=2026&pagina=214&itens=100"},
+            ],
+        }
+
+    async def fake_status(client, prop_id):
+        return prop_id, None, None
+
+    monkeypatch.setattr(camara_service, "_fetch_camara_json", fake_fetch)
+    monkeypatch.setattr(camara_service, "_fetch_proposicao_status", fake_status)
+
+    proposicoes, total = await camara_service.get_proposicoes(ano=2026, itens=100)
+
+    assert len(proposicoes) == 100
+    assert total == 213 * 100 + 95  # 21395

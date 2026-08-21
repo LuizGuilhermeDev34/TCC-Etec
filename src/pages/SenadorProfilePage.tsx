@@ -6,7 +6,7 @@ import { LoadingSpinner } from "../components/LoadingSpinner";
 import { OfflineBanner } from "../components/OfflineBanner";
 import { DonutChart } from "../components/DonutChart";
 import { PatrimonioCard } from "../components/PatrimonioCard";
-import { api } from "../services/api";
+import { api, classifyApiError } from "../services/api";
 import { containerVariants, slideInLeft } from "../animations";
 import type { ApiStatus, DeputadoVotacao, Senador } from "../types";
 
@@ -50,6 +50,20 @@ function computeStats(votacoes: DeputadoVotacao[]) {
   return { sim, nao, abstencao, secreto, obstrucao, outro, total };
 }
 
+// A API do Senado devolve votações desde o início do mandato, não só do ano
+// corrente, mesmo com o parâmetro dataInicio informado — achado ao vivo:
+// pedir dataInicio=2026-01-01 ainda retorna registros de 2023. Rotular como
+// "— 2026" era enganoso (o cálculo é da legislatura inteira, não do ano).
+function periodoLabel(votacoes: DeputadoVotacao[]): string {
+  const anos = votacoes
+    .map((v) => parseInt((v.data || "").slice(0, 4), 10))
+    .filter((a) => !isNaN(a));
+  if (anos.length === 0) return "";
+  const min = Math.min(...anos);
+  const max = Math.max(...anos);
+  return min === max ? `${min}` : `${min}–${max}`;
+}
+
 export function SenadorProfilePage() {
   const { codigo } = useParams<{ codigo: string }>();
   const navigate = useNavigate();
@@ -60,8 +74,8 @@ export function SenadorProfilePage() {
   const [votacoes, setVotacoes] = useState<DeputadoVotacao[]>([]);
   const [statusVot, setStatusVot] = useState<ApiStatus>("loading");
 
-  useEffect(() => {
-    if (!codigo) return;
+  function loadSenador() {
+    if (!codigo) return () => {};
     let cancelled = false;
 
     // Load senator from the list (we match by código)
@@ -71,9 +85,9 @@ export function SenadorProfilePage() {
         if (cancelled) return;
         const found = list.find((s) => s.codigo === codigo);
         if (found) { setSenador(found); setStatusSen("success"); }
-        else setStatusSen("error");
+        else setStatusSen("not_found");
       })
-      .catch((e: Error) => { if (!cancelled) setStatusSen(e.message === "offline" ? "offline" : "error"); });
+      .catch((e: Error) => { if (!cancelled) setStatusSen(classifyApiError(e)); });
 
     // Load votações
     setStatusVot("loading");
@@ -82,7 +96,8 @@ export function SenadorProfilePage() {
       .catch(() => { if (!cancelled) setStatusVot("error"); });
 
     return () => { cancelled = true; };
-  }, [codigo]);
+  }
+  useEffect(loadSenador, [codigo]);
 
   const stats = computeStats(votacoes);
 
@@ -101,8 +116,14 @@ export function SenadorProfilePage() {
         </motion.button>
 
         {statusSen === "loading" && <LoadingSpinner message="Carregando perfil..." count={3} />}
-        {(statusSen === "offline" || statusSen === "error") && (
-          <OfflineBanner source="API do Senado" />
+        {statusSen === "not_found" && (
+          <div className="rounded-lg border border-slate-200 bg-slate-50 p-6 text-center">
+            <h3 className="font-semibold text-slate-700">Senador não encontrado</h3>
+            <p className="mt-1 text-sm text-slate-500">Não existe senador com este código na base atual do Senado.</p>
+          </div>
+        )}
+        {(statusSen === "offline" || statusSen === "error" || statusSen === "rate_limited") && (
+          <OfflineBanner source="API do Senado" kind={statusSen === "rate_limited" ? "rate_limited" : "offline"} onRetry={loadSenador} />
         )}
 
         {statusSen === "success" && senador && (
@@ -164,7 +185,7 @@ export function SenadorProfilePage() {
                 <svg className="h-4 w-4 text-blue-500" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" d="M3 13.125C3 12.504 3.504 12 4.125 12h2.25c.621 0 1.125.504 1.125 1.125v6.75C7.5 20.496 6.996 21 6.375 21h-2.25A1.125 1.125 0 0 1 3 19.875v-6.75ZM9.75 8.625c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125v11.25c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 0 1-1.125-1.125V8.625ZM16.5 4.125c0-.621.504-1.125 1.125-1.125h2.25C20.496 3 21 3.504 21 4.125v15.75c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 0 1-1.125-1.125V4.125Z" />
                 </svg>
-                Estatísticas de Votação — 2026
+                Estatísticas de Votação{stats.total > 0 ? ` — ${periodoLabel(votacoes)}` : ""}
                 {statusVot === "loading" && <span className="ml-1 text-xs font-normal text-slate-400">carregando...</span>}
               </h2>
 
@@ -223,7 +244,7 @@ export function SenadorProfilePage() {
                 </div>
               )}
               {statusVot === "success" && stats.total === 0 && (
-                <p className="text-sm text-slate-400">Nenhuma votação encontrada para 2026.</p>
+                <p className="text-sm text-slate-400">Nenhuma votação encontrada para este senador.</p>
               )}
               {statusVot === "error" && (
                 <p className="text-sm text-slate-400">Dados de votação indisponíveis para este senador.</p>

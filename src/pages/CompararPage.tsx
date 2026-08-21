@@ -673,6 +673,16 @@ export function CompararPage() {
       .catch(() => setStatusAll("error"));
   }, []);
 
+  function loadComparacao() {
+    if (!selA || !selB) return;
+    setStatus("loading");
+    setResult(null);
+    api.comparar
+      .deputados(selA.id, selB.id)
+      .then((r) => { setResult(r); setStatus("success"); })
+      .catch(() => setStatus("error"));
+  }
+
   useEffect(() => {
     if (!selA || !selB) {
       setResult(null);
@@ -758,7 +768,13 @@ export function CompararPage() {
 
         {status === "error" && (
           <div className="rounded-2xl border border-red-100 bg-red-50 p-6 text-center text-sm text-red-600">
-            Não foi possível carregar os dados. Verifique se o backend está rodando.
+            <p>Não foi possível carregar a comparação. Pode ser instabilidade da fonte oficial ou muitas requisições recentes.</p>
+            <button
+              onClick={loadComparacao}
+              className="mt-3 rounded-md bg-red-600 px-3 py-1.5 text-sm font-medium text-white transition-colors hover:bg-red-700"
+            >
+              Tentar novamente
+            </button>
           </div>
         )}
 

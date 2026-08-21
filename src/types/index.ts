@@ -233,4 +233,4 @@ export interface ProposicoesDeputado {
   total: number;
 }
 
-export type ApiStatus = "idle" | "loading" | "success" | "error" | "offline";
+export type ApiStatus = "idle" | "loading" | "success" | "error" | "offline" | "rate_limited" | "not_found";

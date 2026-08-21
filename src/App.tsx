@@ -10,6 +10,7 @@ import { PartidosPage } from "./pages/PartidosPage";
 import { PartidoProfilePage } from "./pages/PartidoProfilePage";
 import { LeisPage } from "./pages/LeisPage";
 import { CompararPage } from "./pages/CompararPage";
+import { NotFoundPage } from "./pages/NotFoundPage";
 
 /**
  * Componente que gerencia rotas com animações de transição
@@ -47,6 +48,7 @@ function AppRoutes() {
               partido). Redirect para não quebrar link/print antigo do grupo. */}
           <Route path="/atividades" element={<Navigate to="/leis" replace />} />
           <Route path="/comparar" element={<CompararPage />} />
+          <Route path="*" element={<NotFoundPage />} />
         </Routes>
       </AnimatePresence>
     </Layout>

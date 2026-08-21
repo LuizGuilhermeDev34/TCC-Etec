@@ -4,7 +4,7 @@ import { PageTransition } from "../components/PageTransition";
 import { LoadingSpinner } from "../components/LoadingSpinner";
 import { OfflineBanner } from "../components/OfflineBanner";
 import { VotoPartidoPanel } from "../components/VotoPartidoPanel";
-import { api } from "../services/api";
+import { api, classifyApiError } from "../services/api";
 import { containerVariants, slideInLeft, cardHover } from "../animations";
 import { fmtDate } from "../utils/dateFormat";
 import { buildDataFim, buildDataInicio } from "../utils/monthRange";
@@ -24,25 +24,36 @@ const TIPOS: { value: string; label: string }[] = [
   { value: "PL",  label: "Projeto de Lei (PL)" },
   { value: "PEC", label: "Emenda Constitucional (PEC)" },
   { value: "MPV", label: "Medida Provisória (MPV)" },
-  { value: "MP",  label: "Medida Provisória (MP)" },
   { value: "PDL", label: "Decreto Legislativo (PDL)" },
   { value: "PLP", label: "Lei Complementar (PLP)" },
+  { value: "REQ", label: "Requerimento (REQ)" },
+  { value: "RIC", label: "Requerimento de Informação (RIC)" },
+  { value: "MSC", label: "Mensagem (MSC)" },
+  { value: "INC", label: "Indicação (INC)" },
 ];
+
+// Tipos administrativos/processuais — não são propostas de lei, são pedidos
+// e trâmites internos. Escondidos por padrão (ver mostrarTramite) porque em
+// volume dominam qualquer lista ordenada por data mais recente sem
+// distinção nenhuma do conteúdo de mérito.
+const TRAMITE_TIPOS = new Set(["REQ", "RIC", "MSC", "INC"]);
 
 const TIPO_COLORS: Record<string, string> = {
   PL:  "bg-blue-50 text-blue-700 border-blue-200",
   PEC: "bg-purple-50 text-purple-700 border-purple-200",
-  MP:  "bg-orange-50 text-orange-700 border-orange-200",
   MPV: "bg-orange-50 text-orange-700 border-orange-200",
   PDL: "bg-green-50 text-green-700 border-green-200",
   PLP: "bg-teal-50 text-teal-700 border-teal-200",
+  REQ: "bg-slate-50 text-slate-600 border-slate-200",
+  RIC: "bg-slate-50 text-slate-600 border-slate-200",
+  MSC: "bg-slate-50 text-slate-600 border-slate-200",
+  INC: "bg-slate-50 text-slate-600 border-slate-200",
 };
 
 const GLOSSARIO: Record<string, { nome: string; descricao: string }> = {
   PL:   { nome: "Projeto de Lei", descricao: "Proposta de criação ou alteração de lei ordinária. Apresentada por deputados, senadores ou pelo Executivo." },
   PEC:  { nome: "Proposta de Emenda Constitucional", descricao: "Altera a Constituição Federal. Exige aprovação de 3/5 dos parlamentares em dois turnos de votação." },
   MPV:  { nome: "Medida Provisória", descricao: "Lei temporária editada pelo Presidente da República com força imediata, válida por 60 dias (prorrogável por mais 60). Precisa ser aprovada pelo Congresso." },
-  MP:   { nome: "Medida Provisória", descricao: "Lei temporária editada pelo Presidente da República com força imediata, válida por 60 dias (prorrogável por mais 60). Precisa ser aprovada pelo Congresso." },
   PDL:  { nome: "Projeto de Decreto Legislativo", descricao: "Ato do Congresso que não precisa de sanção presidencial. Usado para aprovar tratados internacionais, sustar atos do Executivo, etc." },
   PLP:  { nome: "Projeto de Lei Complementar", descricao: "Complementa a Constituição em temas específicos (tributário, financeiro, etc.). Exige maioria absoluta — mais da metade de todos os parlamentares." },
   REQ:  { nome: "Requerimento", descricao: "Pedido formal feito por deputado ou partido. Pode ser pedido de urgência (para votar mais rápido), adiamento, convocação de ministro, pedido de informações, etc." },
@@ -363,10 +374,16 @@ export function LeisPage() {
 
   // Proposições
   const [proposicoes, setProposicoes] = useState<Proposicao[]>([]);
+  const [totalProposicoes, setTotalProposicoes] = useState(0);
   const [statusProp, setStatusProp] = useState<ApiStatus>("idle");
   const [ano, setAno] = useState(new Date().getFullYear());
   const [tipo, setTipo] = useState("");
   const [itens, setItens] = useState(20);
+  // Default esconde trâmite (requerimentos, indicações, mensagens) — achado
+  // ao vivo: numa página de 20, 14 eram requerimentos idênticos do mesmo
+  // autor no mesmo dia, soterrando o conteúdo de mérito. Off por padrão,
+  // não removido: quem quer ver trâmite ainda pode.
+  const [mostrarTramite, setMostrarTramite] = useState(false);
 
   // Votações
   const now = new Date();
@@ -394,15 +411,16 @@ export function LeisPage() {
     api.camara.proposicoes(ano, tipo, itens)
       .then((d) => {
         if (reqId !== propReqId.current) return;
-        const sorted = [...d].sort((a, b) =>
+        const sorted = [...d.itens].sort((a, b) =>
           new Date(b.data_apresentacao ?? 0).getTime() - new Date(a.data_apresentacao ?? 0).getTime()
         );
         setProposicoes(sorted);
+        setTotalProposicoes(d.total);
         setStatusProp("success");
       })
       .catch((e: Error) => {
         if (reqId !== propReqId.current) return;
-        setStatusProp(e.message === "offline" ? "offline" : "error");
+        setStatusProp(classifyApiError(e));
       });
   }
 
@@ -420,7 +438,7 @@ export function LeisPage() {
       })
       .catch((e: Error) => {
         if (reqId !== votReqId.current) return;
-        setStatusVot(e.message === "offline" ? "offline" : "error");
+        setStatusVot(classifyApiError(e));
         setRefreshing(false);
       });
   }
@@ -507,26 +525,47 @@ export function LeisPage() {
                 </select>
                 <select value={itens} onChange={(e) => setItens(Number(e.target.value))}
                   className="h-9 rounded-lg border border-slate-200 bg-slate-50 px-3 text-sm text-slate-600 focus:outline-none">
-                  {[20, 50, 100].map((n) => <option key={n} value={n}>{n} por página</option>)}
+                  {[20, 50, 100].map((n) => <option key={n} value={n}>mostrar {n} mais recentes</option>)}
                 </select>
               </div>
+              {/* Off por padrão: requerimentos/indicações/mensagens são trâmite
+                  administrativo, não propostas de lei — em volume, dominam
+                  qualquer lista recente sem esta distinção. */}
+              <label className="mt-3 flex w-fit cursor-pointer items-center gap-2 text-xs text-slate-500">
+                <input
+                  type="checkbox"
+                  checked={mostrarTramite}
+                  onChange={(e) => setMostrarTramite(e.target.checked)}
+                  className="h-3.5 w-3.5 rounded border-slate-300"
+                />
+                Mostrar trâmite (requerimentos, indicações, mensagens)
+              </label>
             </motion.div>
 
             {statusProp === "loading" && <LoadingSpinner message="Carregando proposições..." count={4} />}
-            {(statusProp === "offline" || statusProp === "error") && (
-              <OfflineBanner source="API da Câmara" onRetry={loadProposicoes} />
+            {(statusProp === "offline" || statusProp === "error" || statusProp === "rate_limited") && (
+              <OfflineBanner source="API da Câmara" kind={statusProp === "rate_limited" ? "rate_limited" : "offline"} onRetry={loadProposicoes} />
             )}
 
-            {statusProp === "success" && (
+            {statusProp === "success" && (() => {
+              const proposicoesVisiveis = mostrarTramite
+                ? proposicoes
+                : proposicoes.filter((p) => !TRAMITE_TIPOS.has(p.sigla_tipo));
+              const ocultas = proposicoes.length - proposicoesVisiveis.length;
+              return (
               <>
-                <p className="mb-3 text-xs text-slate-400">{proposicoes.length} projeto(s) encontrado(s)</p>
+                <p className="mb-3 text-xs text-slate-400">
+                  {proposicoesVisiveis.length} mais recentes exibidas, de {totalProposicoes.toLocaleString("pt-BR")} no
+                  total para {tipo || "todos os tipos"} em {ano}
+                  {!mostrarTramite && ocultas > 0 && ` — ${ocultas} de trâmite ocultas`}
+                </p>
                 <motion.div variants={containerVariants} initial="hidden" animate="show" className="space-y-3">
-                  {proposicoes.length === 0 && (
+                  {proposicoesVisiveis.length === 0 && (
                     <p className="py-10 text-center text-sm text-slate-400">
                       Nenhuma proposição para {tipo || "todas as categorias"} em {ano}.
                     </p>
                   )}
-                  {proposicoes.map((p) => (
+                  {proposicoesVisiveis.map((p) => (
                     <motion.div key={p.id} variants={slideInLeft} whileHover={cardHover}
                       className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
                       <div className="flex items-start justify-between gap-4">
@@ -554,7 +593,8 @@ export function LeisPage() {
                   ))}
                 </motion.div>
               </>
-            )}
+              );
+            })()}
           </>
         )}
 
@@ -614,8 +654,8 @@ export function LeisPage() {
             </motion.div>
 
             {statusVot === "loading" && <LoadingSpinner message="Carregando votações..." count={4} />}
-            {(statusVot === "offline" || statusVot === "error") && (
-              <OfflineBanner source="API da Câmara" onRetry={() => loadVotacoes()} />
+            {(statusVot === "offline" || statusVot === "error" || statusVot === "rate_limited") && (
+              <OfflineBanner source="API da Câmara" kind={statusVot === "rate_limited" ? "rate_limited" : "offline"} onRetry={() => loadVotacoes()} />
             )}
 
             {statusVot === "success" && (() => {

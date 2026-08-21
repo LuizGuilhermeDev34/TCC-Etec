@@ -1,9 +1,16 @@
 interface OfflineBannerProps {
   source?: string;
   onRetry?: () => void;
+  kind?: "offline" | "rate_limited";
 }
 
-export function OfflineBanner({ source = "servidor", onRetry }: OfflineBannerProps) {
+export function OfflineBanner({ source = "servidor", onRetry, kind = "offline" }: OfflineBannerProps) {
+  const title = kind === "rate_limited" ? "Muitas requisições" : "Serviço indisponível";
+  const message =
+    kind === "rate_limited"
+      ? "Este site limita o número de requisições por visitante para não sobrecarregar as fontes oficiais. Aguarde cerca de um minuto e tente de novo — isso não é uma falha da fonte de dados."
+      : `Não foi possível conectar à ${source}. O serviço pode estar temporariamente indisponível — tente novamente em instantes.`;
+
   return (
     <div className="rounded-lg border border-amber-200 bg-amber-50 p-6">
       <div className="flex items-start gap-4">
@@ -13,9 +20,9 @@ export function OfflineBanner({ source = "servidor", onRetry }: OfflineBannerPro
           </svg>
         </div>
         <div className="flex-1">
-          <h3 className="font-semibold text-amber-800">Serviço indisponível</h3>
+          <h3 className="font-semibold text-amber-800">{title}</h3>
           <p className="mt-1 text-sm text-amber-700">
-            Não foi possível conectar ao {source}. O serviço pode estar temporariamente indisponível — tente novamente em instantes.
+            {message}
           </p>
           {onRetry && (
             <button

@@ -459,7 +459,8 @@ async def _fetch_proposicao_status(
         return prop_id, None, None
 
 
-async def get_proposicoes(ano: int = 2026, tipo: str = "", itens: int = 20) -> List[Proposicao]:
+async def get_proposicoes(ano: int = 2026, tipo: str = "", itens: int = 20) -> tuple[List[Proposicao], int]:
+    """Retorna (proposições da página mais recente, total real do período)."""
     cache_key = f"proposicoes:{ano}:{tipo}:{itens}"
     cached = _cache.get(cache_key)
     if cached is not None:
@@ -471,6 +472,19 @@ async def get_proposicoes(ano: int = 2026, tipo: str = "", itens: int = 20) -> L
 
     payload = await _fetch_camara_json("/proposicoes", params=params)
     items = payload.get("dados", [])
+
+    # Mesmo truque de get_deputado_proposicoes: itens é teto de página, não o
+    # total do ano — um ano inteiro passa de 20 mil proposições, e mostrar
+    # "99 encontrado(s)" sem indicar que há milhares a mais é enganoso
+    # (achado ao vivo: 2026 tem 21.395 proposições reais, a tela mostrava só
+    # as 99 carregadas como se fosse a contagem total do período).
+    total = len(items)
+    last_href = next((l.get("href") for l in payload.get("links", []) if l.get("rel") == "last"), None)
+    if last_href:
+        last_pagina = _parse_pagina_from_link(last_href)
+        if last_pagina and last_pagina > 1:
+            last_payload = await _fetch_camara_json("/proposicoes", params={**params, "pagina": last_pagina})
+            total = (last_pagina - 1) * itens + len(last_payload.get("dados", []))
     # Itens sem ementa (comum em tipos administrativos como DOC/OF) não têm
     # conteúdo nenhum pra mostrar — filtra por ausência de conteúdo, não por
     # tipo, pra não esconder um tipo legítimo que também tenha ementa.
@@ -495,8 +509,9 @@ async def get_proposicoes(ano: int = 2026, tipo: str = "", itens: int = 20) -> L
             if i + batch_size < len(proposicoes):
                 await asyncio.sleep(0.2)
 
-    _cache.set(cache_key, proposicoes)
-    return proposicoes
+    resultado = (proposicoes, total)
+    _cache.set(cache_key, resultado)
+    return resultado
 
 
 def _to_votacao(data: Dict[str, Any]) -> Votacao:

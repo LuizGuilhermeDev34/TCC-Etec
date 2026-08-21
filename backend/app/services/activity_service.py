@@ -28,7 +28,7 @@ async def get_recent_activities() -> List[Activity]:
     )
 
     votacoes = votacoes_result if isinstance(votacoes_result, list) else []
-    proposicoes = proposicoes_result if isinstance(proposicoes_result, list) else []
+    proposicoes = proposicoes_result[0] if isinstance(proposicoes_result, tuple) else []
 
     activities: List[Activity] = []
 
