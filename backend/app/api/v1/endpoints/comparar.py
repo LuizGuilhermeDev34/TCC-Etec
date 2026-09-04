@@ -2,7 +2,9 @@ import asyncio
 from typing import Any, Dict
 
 from fastapi import APIRouter, HTTPException, Path
+from httpx import HTTPError
 
+from .camara import _raise_camara_error
 from ....services.camara_service import (
     get_deputado_detail,
     get_deputado_despesas,
@@ -15,11 +17,15 @@ router = APIRouter(prefix="/comparar", tags=["comparar"])
 
 
 async def _get_deputado_data(dep_id: int) -> Dict[str, Any]:
-    # Detail primeiro — nome é necessário para buscar patrimônio no TSE
+    # Detail primeiro — nome é necessário para buscar patrimônio no TSE.
+    # Antes: "except Exception" genérico sempre virava 404 "não encontrado",
+    # mesmo quando a causa real era a Câmara fora do ar (F-13 da auditoria de
+    # código) — reaproveita o mesmo mapeamento 404-vs-503 já usado em
+    # /camara/deputados/{id}, em vez de reimplementar.
     try:
         detail = await get_deputado_detail(dep_id)
-    except Exception as exc:
-        raise HTTPException(status_code=404, detail=f"Deputado {dep_id} não encontrado") from exc
+    except HTTPError as error:
+        _raise_camara_error(error)
 
     # Proposições, despesas, patrimônio e contagem por tipo em paralelo.
     # proposicoes_por_tipo pagina o histórico inteiro do deputado (ver

@@ -12,7 +12,14 @@ faz get_patrimonio_deputado_federal lancar excecao dentro do
 asyncio.gather(..., return_exceptions=True). Sem uma flag equivalente a
 despesas_indisponivel, isso virava "patrimonio_total: 0" como se fosse
 patrimonio real zero.
+
+Regressao de 2026-09-03 (F-13 da auditoria de codigo): "except Exception"
+generico ao redor de get_deputado_detail sempre virava 404 "nao encontrado",
+mesmo quando a causa real era a Camara fora do ar -- o mesmo bug que F-01 ja
+tinha corrigido em /camara/deputados/{id}, so que reimplementado (mal) aqui.
 """
+import httpx
+
 from app.api.v1.endpoints import comparar
 from app.models.deputado_detail import DeputadoDetail
 
@@ -144,3 +151,33 @@ async def test_get_deputado_data_com_patrimonio_real_nao_marca_indisponivel(monk
 
     assert data["patrimonio_indisponivel"] is False
     assert data["patrimonio_total"] == 1203189.0
+
+
+async def test_deputado_nao_encontrado_vira_404(monkeypatch):
+    async def fake_detail(dep_id):
+        request = httpx.Request("GET", "https://dadosabertos.camara.leg.br/api/v2/deputados/999999")
+        response = httpx.Response(404, request=request)
+        raise httpx.HTTPStatusError("erro", request=request, response=response)
+
+    monkeypatch.setattr(comparar, "get_deputado_detail", fake_detail)
+
+    from fastapi import HTTPException
+    import pytest
+
+    with pytest.raises(HTTPException) as exc_info:
+        await comparar._get_deputado_data(999999)
+    assert exc_info.value.status_code == 404
+
+
+async def test_camara_fora_do_ar_vira_503_nao_404(monkeypatch):
+    async def fake_detail(dep_id):
+        raise httpx.ConnectTimeout("timeout")
+
+    monkeypatch.setattr(comparar, "get_deputado_detail", fake_detail)
+
+    from fastapi import HTTPException
+    import pytest
+
+    with pytest.raises(HTTPException) as exc_info:
+        await comparar._get_deputado_data(1)
+    assert exc_info.value.status_code == 503

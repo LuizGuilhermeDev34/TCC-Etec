@@ -63,6 +63,19 @@ def test_senador_votacoes_repassa_data_inicio(monkeypatch):
     assert captured == {"codigo": "123", "data_inicio": "2026-01-01"}
 
 
+def test_senador_votacoes_xml_malformado_vira_503_nao_500_cru(monkeypatch):
+    import xml.etree.ElementTree as ET
+
+    async def fake_votacoes(codigo, data_inicio=None):
+        raise ET.ParseError("xml malformado")
+
+    monkeypatch.setattr(senado_endpoints, "get_senador_votacoes", fake_votacoes)
+
+    resp = client.get("/api/v1/senado/senadores/123/votacoes")
+
+    assert resp.status_code == 503
+
+
 def test_senador_votacoes_codigo_com_caractere_invalido_e_rejeitado(monkeypatch):
     called = False
 

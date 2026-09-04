@@ -62,13 +62,16 @@ async def get_senador_votacoes(codigo: str, data_inicio: Optional[str] = None) -
 
     params: dict = {"dataInicio": data_inicio or "2026-01-01"}
     url = f"{_SENADO_BASE}/senador/{codigo}/votacoes"
-    try:
-        async with httpx.AsyncClient(timeout=15.0) as client:
-            response = await client.get(url, params=params)
-            response.raise_for_status()
-            root = ET.fromstring(response.text)
-    except Exception:
-        return []
+    # F-11 da auditoria de código: "except Exception: return []" cobria tanto
+    # falha real (Senado fora do ar, timeout, XML malformado) quanto o caso
+    # legítimo de "senador sem votos no período" com o MESMO resultado --
+    # indistinguíveis pro chamador. Um senador sem votos já produz [] pelo
+    # caminho normal (root.findall(".//Votacao") vazio, sem exceção nenhuma);
+    # só precisamos parar de mascarar falha real como se fosse esse caso.
+    async with httpx.AsyncClient(timeout=15.0) as client:
+        response = await client.get(url, params=params)
+        response.raise_for_status()
+        root = ET.fromstring(response.text)
 
     votacoes: List[DeputadoVotacao] = []
     for v in root.findall(".//Votacao"):
