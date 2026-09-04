@@ -6,6 +6,7 @@ import { LoadingSpinner } from "../components/LoadingSpinner";
 import { OfflineBanner } from "../components/OfflineBanner";
 import { api, classifyApiError } from "../services/api";
 import { containerVariants, slideInLeft, cardHover } from "../animations";
+import { partyColorLight } from "../utils/partyColors";
 import type { ApiStatus, Deputado, Senador } from "../types";
 
 type Tab = "deputados" | "senadores";
@@ -16,30 +17,8 @@ const UFS = [
   "SP", "SE", "TO",
 ];
 
-const PARTY_COLORS: Record<string, string> = {
-  PT: "bg-red-100 text-red-700",
-  PL: "bg-blue-100 text-blue-700",
-  MDB: "bg-green-100 text-green-700",
-  UNIÃO: "bg-slate-200 text-slate-700",
-  PSD: "bg-purple-100 text-purple-700",
-  PSB: "bg-pink-100 text-pink-700",
-  PDT: "bg-orange-100 text-orange-700",
-  PSOL: "bg-rose-100 text-rose-700",
-  REPUBLICANOS: "bg-violet-100 text-violet-700",
-  PP: "bg-yellow-100 text-yellow-700",
-  PODE: "bg-sky-100 text-sky-700",
-  PODEMOS: "bg-sky-100 text-sky-700",
-  AVANTE: "bg-teal-100 text-teal-700",
-  SOLIDARIEDADE: "bg-amber-100 text-amber-700",
-  PATRIOTA: "bg-emerald-100 text-emerald-700",
-  PV: "bg-lime-100 text-lime-700",
-  DC: "bg-cyan-100 text-cyan-700",
-  PSDB: "bg-blue-100 text-blue-700",
-  CIDADANIA: "bg-indigo-100 text-indigo-700",
-};
-
 function partyColor(sigla: string) {
-  return PARTY_COLORS[sigla.toUpperCase()] ?? "bg-slate-100 text-slate-600";
+  return partyColorLight(sigla.toUpperCase());
 }
 
 function DeputadoCard({ d }: { d: Deputado }) {
@@ -193,18 +172,22 @@ export function PoliticosPage() {
   }
   useEffect(loadDeputados, [uf]);
 
+  // Uma implementação só, reaproveitada pelo retry manual e pelo efeito
+  // automático — antes eram duas cópias divergentes (a automática tinha
+  // guard de cancelamento e cache "já carregado", a do botão não tinha
+  // nenhum dos dois) que já tinham começado a divergir (achado da
+  // auditoria de código, F-34).
   function loadSenadores() {
+    let cancelled = false;
     setStatusSen("loading");
-    api.senado.senadores().then((d) => { setSenadores(d); setStatusSen("success"); })
-      .catch((e: Error) => setStatusSen(classifyApiError(e)));
+    api.senado.senadores()
+      .then((d) => { if (!cancelled) { setSenadores(d); setStatusSen("success"); } })
+      .catch((e: Error) => { if (!cancelled) setStatusSen(classifyApiError(e)); });
+    return () => { cancelled = true; };
   }
   useEffect(() => {
     if (tab !== "senadores" || senadores.length > 0) return;
-    let cancelled = false;
-    setStatusSen("loading");
-    api.senado.senadores().then((d) => { if (!cancelled) { setSenadores(d); setStatusSen("success"); } })
-      .catch((e: Error) => { if (!cancelled) setStatusSen(classifyApiError(e)); });
-    return () => { cancelled = true; };
+    return loadSenadores();
   }, [tab, senadores.length]);
 
   const q = query.toLowerCase();

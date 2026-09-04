@@ -1,7 +1,7 @@
 from typing import Any, List
 
 from fastapi import APIRouter, HTTPException, Path, Query
-from httpx import HTTPStatusError
+from httpx import HTTPError
 
 from ....schemas.deputado import DeputadoOut
 from ....schemas.deputado_despesa import DeputadoDespesaOut
@@ -28,13 +28,20 @@ from ....services.camara_service import (
 router = APIRouter(prefix="/camara", tags=["camara"])
 
 
-def _raise_camara_error(error: HTTPStatusError) -> None:
+def _raise_camara_error(error: HTTPError) -> None:
     """A Câmara respondendo 404 (recurso não existe) e a Câmara fora do ar
     viravam o mesmo 503 genérico — um ID de deputado inválido dizia "não foi
     possível conectar à API da Câmara" quando o serviço estava funcionando
     perfeitamente. Propaga o 404 real; só trata como indisponibilidade
-    quando não é isso."""
-    if error.response is not None and error.response.status_code == 404:
+    quando não é isso.
+
+    Recebe httpx.HTTPError (não só HTTPStatusError) — timeout/conexão
+    recusada levantam httpx.RequestError, que é IRMÃ de HTTPStatusError, não
+    filha, e não tem atributo .response. Capturar só HTTPStatusError nas
+    rotas fazia esse caso (o mais provável de falha externa) escapar de
+    _raise_camara_error inteiramente e virar 500 cru sem detail nenhum."""
+    response = getattr(error, "response", None)
+    if response is not None and response.status_code == 404:
         raise HTTPException(status_code=404, detail="Recurso não encontrado na Câmara dos Deputados") from error
     raise HTTPException(status_code=503, detail="Serviço da Câmara indisponível") from error
 
@@ -46,7 +53,7 @@ async def read_deputados(
 ) -> List[DeputadoOut]:
     try:
         deputados = await get_deputados(legislatura=legislatura, uf=uf)
-    except HTTPStatusError as error:
+    except HTTPError as error:
         _raise_camara_error(error)
     return [DeputadoOut.model_validate(d) for d in deputados]
 
@@ -55,7 +62,7 @@ async def read_deputados(
 async def read_deputado(deputado_id: int = Path(..., ge=1)) -> DeputadoDetailOut:
     try:
         detail = await get_deputado_detail(deputado_id)
-    except HTTPStatusError as error:
+    except HTTPError as error:
         _raise_camara_error(error)
     return DeputadoDetailOut.model_validate(detail, from_attributes=True)
 
@@ -64,7 +71,7 @@ async def read_deputado(deputado_id: int = Path(..., ge=1)) -> DeputadoDetailOut
 async def read_deputado_proposicoes(deputado_id: int = Path(..., ge=1)) -> ProposicoesDeputadoOut:
     try:
         proposicoes, total = await get_deputado_proposicoes(deputado_id)
-    except HTTPStatusError as error:
+    except HTTPError as error:
         _raise_camara_error(error)
     return ProposicoesDeputadoOut(itens=[ProposicaoOut.model_validate(p) for p in proposicoes], total=total)
 
@@ -75,7 +82,7 @@ async def read_deputado_votacoes(
 ) -> List[DeputadoVotacaoOut]:
     try:
         votacoes = await get_deputado_votacoes(deputado_id)
-    except HTTPStatusError as error:
+    except HTTPError as error:
         _raise_camara_error(error)
     return [DeputadoVotacaoOut.model_validate(v, from_attributes=True) for v in votacoes]
 
@@ -87,7 +94,7 @@ async def read_deputado_despesas(
 ) -> List[DeputadoDespesaOut]:
     try:
         despesas = await get_deputado_despesas(deputado_id, ano=ano)
-    except HTTPStatusError as error:
+    except HTTPError as error:
         _raise_camara_error(error)
     return [DeputadoDespesaOut.model_validate(d, from_attributes=True) for d in despesas]
 
@@ -96,7 +103,7 @@ async def read_deputado_despesas(
 async def read_partidos() -> List[Any]:
     try:
         return await get_partidos()
-    except HTTPStatusError as error:
+    except HTTPError as error:
         _raise_camara_error(error)
 
 
@@ -104,7 +111,7 @@ async def read_partidos() -> List[Any]:
 async def read_partido(partido_id: int = Path(..., ge=1)) -> Any:
     try:
         partido = await get_partido_by_id(partido_id)
-    except HTTPStatusError as error:
+    except HTTPError as error:
         _raise_camara_error(error)
     if not partido:
         raise HTTPException(status_code=404, detail="Partido não encontrado")
@@ -115,7 +122,7 @@ async def read_partido(partido_id: int = Path(..., ge=1)) -> Any:
 async def read_partido_lideranca(partido_id: int = Path(..., ge=1)) -> Any:
     try:
         return await get_partido_lideranca(partido_id)
-    except HTTPStatusError as error:
+    except HTTPError as error:
         _raise_camara_error(error)
 
 
@@ -123,7 +130,7 @@ async def read_partido_lideranca(partido_id: int = Path(..., ge=1)) -> Any:
 async def read_partido_votacoes_stats(partido_id: int = Path(..., ge=1)) -> Any:
     try:
         return await get_partido_votacoes_stats(partido_id)
-    except HTTPStatusError as error:
+    except HTTPError as error:
         _raise_camara_error(error)
 
 
@@ -131,7 +138,7 @@ async def read_partido_votacoes_stats(partido_id: int = Path(..., ge=1)) -> Any:
 async def read_partido_gastos(partido_id: int = Path(..., ge=1)) -> Any:
     try:
         return await get_partido_gastos(partido_id)
-    except HTTPStatusError as error:
+    except HTTPError as error:
         _raise_camara_error(error)
 
 
@@ -143,7 +150,7 @@ async def read_proposicoes(
 ) -> ProposicoesDeputadoOut:
     try:
         proposicoes, total = await get_proposicoes(ano=ano, tipo=tipo, itens=itens)
-    except HTTPStatusError as error:
+    except HTTPError as error:
         _raise_camara_error(error)
     return ProposicoesDeputadoOut(itens=[ProposicaoOut.model_validate(p) for p in proposicoes], total=total)
 
@@ -152,7 +159,7 @@ async def read_proposicoes(
 async def read_votacao_votos(votacao_id: str = Path(..., pattern=r"^[A-Za-z0-9-]+$")) -> Any:
     try:
         return await get_votacao_votos(votacao_id)
-    except HTTPStatusError as error:
+    except HTTPError as error:
         _raise_camara_error(error)
 
 
@@ -167,6 +174,6 @@ async def read_votacoes(
         votacoes = await get_votacoes_recentes(
             itens=itens, data_inicio=data_inicio, data_fim=data_fim, enrich=enriquecer
         )
-    except HTTPStatusError as error:
+    except HTTPError as error:
         _raise_camara_error(error)
     return [VotacaoOut.model_validate(v) for v in votacoes]

@@ -6,34 +6,11 @@ import { LoadingSpinner } from "../components/LoadingSpinner";
 import { OfflineBanner } from "../components/OfflineBanner";
 import { api, classifyApiError } from "../services/api";
 import { containerVariants, slideInLeft, cardHover } from "../animations";
+import { partyColorSolid, partyInitials as initials } from "../utils/partyColors";
 import type { ApiStatus, Partido } from "../types";
 
-const SIGLA_COLORS: Record<string, { bg: string; text: string }> = {
-  PT:            { bg: "bg-red-500",    text: "text-white" },
-  PL:            { bg: "bg-blue-500",   text: "text-white" },
-  MDB:           { bg: "bg-green-500",  text: "text-white" },
-  UNIÃO:         { bg: "bg-slate-700",  text: "text-white" },
-  PSD:           { bg: "bg-slate-500",  text: "text-white" },
-  PSB:           { bg: "bg-pink-500",   text: "text-white" },
-  PDT:           { bg: "bg-orange-500", text: "text-white" },
-  PSOL:          { bg: "bg-rose-500",   text: "text-white" },
-  REPUBLICANOS:  { bg: "bg-violet-600", text: "text-white" },
-  PP:            { bg: "bg-yellow-500", text: "text-white" },
-  PODE:          { bg: "bg-sky-500",    text: "text-white" },
-  AVANTE:        { bg: "bg-teal-500",   text: "text-white" },
-  SOLIDARIEDADE: { bg: "bg-amber-500",  text: "text-white" },
-  PV:            { bg: "bg-lime-600",   text: "text-white" },
-  CIDADANIA:     { bg: "bg-cyan-600",   text: "text-white" },
-  PATRIOTA:      { bg: "bg-emerald-600",text: "text-white" },
-  AGIR:          { bg: "bg-indigo-500", text: "text-white" },
-};
-
 function getColor(sigla: string) {
-  return SIGLA_COLORS[sigla] ?? { bg: "bg-blue-400", text: "text-white" };
-}
-
-function initials(sigla: string) {
-  return sigla.length <= 2 ? sigla : sigla.slice(0, 2);
+  return partyColorSolid(sigla);
 }
 
 export function PartidosPage() {

@@ -7,25 +7,16 @@ import { OfflineBanner } from "../components/OfflineBanner";
 import { PatrimonioCard } from "../components/PatrimonioCard";
 import { api, classifyApiError } from "../services/api";
 import { slideInLeft, containerVariants } from "../animations";
+import { toLocalDate } from "../utils/dateFormat";
+import { partyColorBordered } from "../utils/partyColors";
+import { tipoColor } from "../utils/proposicaoTipo";
 import type { ApiStatus, DeputadoDespesa, DeputadoDetail, Proposicao } from "../types";
 
-const PARTY_COLORS: Record<string, string> = {
-  PT: "bg-red-100 text-red-700 border-red-200",
-  PL: "bg-blue-100 text-blue-700 border-blue-200",
-  MDB: "bg-green-100 text-green-700 border-green-200",
-  UNIÃO: "bg-slate-200 text-slate-700 border-slate-300",
-  PSD: "bg-purple-100 text-purple-700 border-purple-200",
-  PSB: "bg-pink-100 text-pink-700 border-pink-200",
-  PDT: "bg-orange-100 text-orange-700 border-orange-200",
-  PSOL: "bg-rose-100 text-rose-700 border-rose-200",
-  PP: "bg-yellow-100 text-yellow-700 border-yellow-200",
-  PODE: "bg-sky-100 text-sky-700 border-sky-200",
-};
-function partyColor(s: string) { return PARTY_COLORS[s] ?? "bg-slate-100 text-slate-600 border-slate-200"; }
+function partyColor(s: string) { return partyColorBordered(s); }
 
 function formatDate(iso: string | null | undefined) {
   if (!iso) return "—";
-  try { return new Date(iso.slice(0, 10) + "T00:00:00").toLocaleDateString("pt-BR", { day: "2-digit", month: "long", year: "numeric" }); }
+  try { return toLocalDate(iso.slice(0, 10)).toLocaleDateString("pt-BR", { day: "2-digit", month: "long", year: "numeric" }); }
   catch { return iso; }
 }
 
@@ -40,16 +31,6 @@ function SectionCard({ children, className = "" }: { children: React.ReactNode; 
     </div>
   );
 }
-
-const TIPO_COLORS: Record<string, string> = {
-  PL:  "bg-blue-50 text-blue-700 border-blue-200",
-  PEC: "bg-purple-50 text-purple-700 border-purple-200",
-  PDC: "bg-amber-50 text-amber-700 border-amber-200",
-  MPV: "bg-red-50 text-red-700 border-red-200",
-  REQ: "bg-slate-50 text-slate-600 border-slate-200",
-  INC: "bg-teal-50 text-teal-700 border-teal-200",
-};
-function tipoColor(tipo: string) { return TIPO_COLORS[tipo] ?? "bg-slate-50 text-slate-600 border-slate-200"; }
 
 // Subsídio mensal vigente desde 01/02/2025 (reajuste escalonado pelo Decreto
 // Legislativo 172/2022) — não a Lei 13.752/2018, que fixou um valor menor
@@ -84,12 +65,12 @@ export function DeputadoProfilePage() {
     setStatusProp("loading");
     api.camara.deputadoProposicoes(nid)
       .then((p) => { if (!cancelled) { setProposicoes(p.itens); setTotalProposicoes(p.total); setStatusProp("success"); } })
-      .catch(() => { if (!cancelled) setStatusProp("error"); });
+      .catch((e: Error) => { if (!cancelled) setStatusProp(classifyApiError(e)); });
 
     setStatusDespesas("loading");
     api.camara.deputadoDespesas(nid)
       .then((d) => { if (!cancelled) { setDespesas(d); setStatusDespesas("success"); } })
-      .catch(() => { if (!cancelled) setStatusDespesas("error"); });
+      .catch((e: Error) => { if (!cancelled) setStatusDespesas(classifyApiError(e)); });
 
     return () => { cancelled = true; };
   }, [id]);
@@ -136,7 +117,7 @@ export function DeputadoProfilePage() {
 
         {statusDep === "not_found" && (
           <div className="rounded-lg border border-slate-200 bg-slate-50 p-6 text-center">
-            <h3 className="font-semibold text-slate-700">Deputado não encontrado</h3>
+            <h1 className="font-semibold text-slate-700">Deputado não encontrado</h1>
             <p className="mt-1 text-sm text-slate-500">Não existe deputado com este ID na base atual da Câmara.</p>
           </div>
         )}
@@ -317,8 +298,10 @@ export function DeputadoProfilePage() {
                 </div>
               )}
 
-              {statusProp === "error" && (
-                <p className="py-4 text-sm text-slate-400">Não foi possível carregar as proposições.</p>
+              {(statusProp === "error" || statusProp === "offline" || statusProp === "rate_limited") && (
+                <p className="py-4 text-sm text-slate-400">
+                  {statusProp === "rate_limited" ? "Muitas requisições — aguarde um instante e recarregue." : "Não foi possível carregar as proposições."}
+                </p>
               )}
 
               {statusProp === "success" && proposicoes.length === 0 && (
@@ -414,8 +397,10 @@ export function DeputadoProfilePage() {
                   Buscando despesas...
                 </div>
               )}
-              {statusDespesas === "error" && (
-                <p className="py-4 text-sm text-slate-400">Não foi possível carregar os gastos CEAP.</p>
+              {(statusDespesas === "error" || statusDespesas === "offline" || statusDespesas === "rate_limited") && (
+                <p className="py-4 text-sm text-slate-400">
+                  {statusDespesas === "rate_limited" ? "Muitas requisições — aguarde um instante e recarregue." : "Não foi possível carregar os gastos CEAP."}
+                </p>
               )}
               {statusDespesas === "success" && despesas.length === 0 && (
                 <p className="py-4 text-sm text-slate-400">

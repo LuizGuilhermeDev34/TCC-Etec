@@ -9,7 +9,7 @@ class VotacaoOut(BaseModel):
     sigla_orgao: str
     proposicao_objeto: Optional[str] = None
     descricao: str
-    aprovacao: int
+    aprovacao: Optional[int] = None
     merito: bool = False
     proposicao_ementa: Optional[str] = None
 

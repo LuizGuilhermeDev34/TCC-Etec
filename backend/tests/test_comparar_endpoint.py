@@ -4,6 +4,14 @@ melhor)" quando na verdade a Camara nao devolveu nenhuma despesa pra
 nenhum dos dois lados (fonte vazia, verificado ao vivo), nao zero real.
 _get_deputado_data precisa expor despesas_indisponivel pro front distinguir
 os dois casos.
+
+Regressao de 2026-09-03 (F-05 da auditoria de codigo): mesmo bug, agora no
+patrimonio do TSE -- confirmado ao vivo que os ZIPs de origem do TSE estao
+bloqueados (403 de borda Akamai, provavelmente por IP de datacenter), o que
+faz get_patrimonio_deputado_federal lancar excecao dentro do
+asyncio.gather(..., return_exceptions=True). Sem uma flag equivalente a
+despesas_indisponivel, isso virava "patrimonio_total: 0" como se fosse
+patrimonio real zero.
 """
 from app.api.v1.endpoints import comparar
 from app.models.deputado_detail import DeputadoDetail
@@ -79,3 +87,60 @@ async def test_get_deputado_data_com_despesas_reais_nao_marca_indisponivel(monke
 
     assert data["despesas_indisponivel"] is False
     assert data["gastos_total"] == 250.0
+
+
+async def test_get_deputado_data_marca_patrimonio_indisponivel_quando_tse_falha(monkeypatch):
+    async def fake_detail(dep_id):
+        return _fake_detail(dep_id)
+
+    async def fake_proposicoes(dep_id):
+        return [], 0
+
+    async def fake_por_tipo(dep_id):
+        return {}
+
+    async def fake_despesas(dep_id):
+        return []
+
+    async def fake_patrimonio(nome, nome_civil):
+        # simula o 403 do TSE se propagando como excecao pro asyncio.gather
+        raise Exception("403 Forbidden")
+
+    monkeypatch.setattr(comparar, "get_deputado_detail", fake_detail)
+    monkeypatch.setattr(comparar, "get_deputado_proposicoes", fake_proposicoes)
+    monkeypatch.setattr(comparar, "get_deputado_proposicoes_por_tipo", fake_por_tipo)
+    monkeypatch.setattr(comparar, "get_deputado_despesas", fake_despesas)
+    monkeypatch.setattr(comparar, "get_patrimonio_deputado_federal", fake_patrimonio)
+
+    data = await comparar._get_deputado_data(1)
+
+    assert data["patrimonio_indisponivel"] is True
+    assert data["patrimonio_total"] == 0.0
+
+
+async def test_get_deputado_data_com_patrimonio_real_nao_marca_indisponivel(monkeypatch):
+    async def fake_detail(dep_id):
+        return _fake_detail(dep_id)
+
+    async def fake_proposicoes(dep_id):
+        return [], 0
+
+    async def fake_por_tipo(dep_id):
+        return {}
+
+    async def fake_despesas(dep_id):
+        return []
+
+    async def fake_patrimonio(nome, nome_civil):
+        return {"total": 1203189.0, "categorias": {}, "itens": [], "fonte": "TSE"}
+
+    monkeypatch.setattr(comparar, "get_deputado_detail", fake_detail)
+    monkeypatch.setattr(comparar, "get_deputado_proposicoes", fake_proposicoes)
+    monkeypatch.setattr(comparar, "get_deputado_proposicoes_por_tipo", fake_por_tipo)
+    monkeypatch.setattr(comparar, "get_deputado_despesas", fake_despesas)
+    monkeypatch.setattr(comparar, "get_patrimonio_deputado_federal", fake_patrimonio)
+
+    data = await comparar._get_deputado_data(1)
+
+    assert data["patrimonio_indisponivel"] is False
+    assert data["patrimonio_total"] == 1203189.0

@@ -80,17 +80,10 @@ export interface Activity {
   description: string;
   actor: string;
   date: string;
-  aprovacao?: number;
+  aprovacao?: number | null;
   sigla_orgao?: string;
   votacao_id?: string;
   merito?: boolean;
-}
-
-export interface PartidoLider {
-  nome: string;
-  urlFoto?: string;
-  uf?: string;
-  uri?: string;
 }
 
 export interface Partido {
@@ -104,7 +97,11 @@ export interface Partido {
   totalMembros?: number;
   totalPosse?: number;
   situacao?: string;
-  lider?: PartidoLider;
+  // Era um tipo próprio (PartidoLider) com um subconjunto destes campos —
+  // consolidado em PartidoLiderInfo (usado em PartidoLideranca), que já
+  // continha os mesmos campos como superconjunto (achado da auditoria de
+  // código, F-37).
+  lider?: PartidoLiderInfo;
 }
 
 export interface Votacao {
@@ -114,7 +111,7 @@ export interface Votacao {
   sigla_orgao: string;
   proposicao_objeto: string | null;
   descricao: string;
-  aprovacao: number;
+  aprovacao: number | null;
   merito: boolean;
   proposicao_ementa?: string | null;
 }
@@ -221,6 +218,7 @@ export interface CompararDeputado {
   gastos_total: number;
   despesas_indisponivel: boolean;
   patrimonio_total: number;
+  patrimonio_indisponivel: boolean;
 }
 
 export interface CompararResult {

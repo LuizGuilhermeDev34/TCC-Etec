@@ -1,9 +1,9 @@
 {
-  "name": "tse-explorer-frontend",
+  "name": "democratizacao-de-dados-frontend",
   "version": "1.0.0",
   "private": true,
   "type": "module",
-  "description": "Frontend para explorar dados do TSE com React, TypeScript e Tailwind",
+  "description": "Frontend do Democratização de Dados — dados públicos de Câmara, Senado e TSE, sem partido, sem agenda, sem informação editorializada",
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",

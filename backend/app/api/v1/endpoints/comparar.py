@@ -64,6 +64,12 @@ async def _get_deputado_data(dep_id: int) -> Dict[str, Any]:
         # com dados: [] para todo mundo, verificado ao vivo), não zero real.
         "despesas_indisponivel": len(despesas) == 0,
         "patrimonio_total": patrimonio_total,
+        # Mesmo raciocínio de despesas_indisponivel: patrimônio vazio hoje é
+        # o TSE bloqueando os ZIPs de origem por IP de datacenter (403
+        # confirmado ao vivo), não o deputado tendo patrimônio zero. Sem
+        # esta flag, "R$ 0" no comparador lê como fato — igual ao bug já
+        # corrigido do CEAP, agora no patrimônio.
+        "patrimonio_indisponivel": not patrimonio,
     }
 
 

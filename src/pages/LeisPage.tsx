@@ -8,6 +8,7 @@ import { api, classifyApiError } from "../services/api";
 import { containerVariants, slideInLeft, cardHover } from "../animations";
 import { fmtDate } from "../utils/dateFormat";
 import { buildDataFim, buildDataInicio } from "../utils/monthRange";
+import { tipoColor } from "../utils/proposicaoTipo";
 import type { ApiStatus, Proposicao, Votacao } from "../types";
 
 type Tab = "proposicoes" | "votacoes";
@@ -38,18 +39,6 @@ const TIPOS: { value: string; label: string }[] = [
 // distinção nenhuma do conteúdo de mérito.
 const TRAMITE_TIPOS = new Set(["REQ", "RIC", "MSC", "INC"]);
 
-const TIPO_COLORS: Record<string, string> = {
-  PL:  "bg-blue-50 text-blue-700 border-blue-200",
-  PEC: "bg-purple-50 text-purple-700 border-purple-200",
-  MPV: "bg-orange-50 text-orange-700 border-orange-200",
-  PDL: "bg-green-50 text-green-700 border-green-200",
-  PLP: "bg-teal-50 text-teal-700 border-teal-200",
-  REQ: "bg-slate-50 text-slate-600 border-slate-200",
-  RIC: "bg-slate-50 text-slate-600 border-slate-200",
-  MSC: "bg-slate-50 text-slate-600 border-slate-200",
-  INC: "bg-slate-50 text-slate-600 border-slate-200",
-};
-
 const GLOSSARIO: Record<string, { nome: string; descricao: string }> = {
   PL:   { nome: "Projeto de Lei", descricao: "Proposta de criação ou alteração de lei ordinária. Apresentada por deputados, senadores ou pelo Executivo." },
   PEC:  { nome: "Proposta de Emenda Constitucional", descricao: "Altera a Constituição Federal. Exige aprovação de 3/5 dos parlamentares em dois turnos de votação." },
@@ -79,10 +68,6 @@ const GLOSSARIO: Record<string, { nome: string; descricao: string }> = {
   SGM:     { nome: "Secretaria-Geral da Mesa", descricao: "Órgão administrativo da Câmara responsável pelo registro e tramitação oficial das sessões e votações." },
   CCOM:    { nome: "Comissão de Comunicação", descricao: "Analisa proposições sobre rádio, TV, telecomunicações e meios de comunicação em geral." },
 };
-
-function tipoColor(t: string) {
-  return TIPO_COLORS[t] ?? "bg-slate-50 text-slate-600 border-slate-200";
-}
 
 function fmtTime(date: Date) {
   return date.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
@@ -124,6 +109,13 @@ function extractSigla(propObj: string): string {
 function VotacaoCard({ v }: { v: Votacao }) {
   const [expanded, setExpanded] = useState(false);
   const approved = v.aprovacao === 1;
+  const rejected = v.aprovacao === 0;
+  // A Câmara não registra resultado binário pra alguns objetos de votação
+  // (destaque, supressão de texto — ex: "Mantido o texto.") — aprovacao vem
+  // null nesses casos. Já tratamos isso como "Rejeitado" no backend, o que
+  // inventava um resultado que a Câmara nunca informou (~3-5% das votações
+  // reais). Terceiro estado neutro em vez de forçar aprovado/rejeitado.
+  const semResultado = v.aprovacao == null;
   const propSigla = v.proposicao_objeto ? extractSigla(v.proposicao_objeto) : null;
   const propInfo = propSigla ? GLOSSARIO[propSigla] : null;
 
@@ -135,10 +127,14 @@ function VotacaoCard({ v }: { v: Votacao }) {
 
   const badgeCls = approved
     ? "border-green-300 bg-green-100 text-green-800"
-    : "border-red-300 bg-red-100 text-red-800";
+    : rejected
+    ? "border-red-300 bg-red-100 text-red-800"
+    : "border-slate-300 bg-slate-100 text-slate-700";
   const orgaoCls = approved
     ? "border-green-200 bg-green-200 text-green-700"
-    : "border-red-200 bg-red-200 text-red-700";
+    : rejected
+    ? "border-red-200 bg-red-200 text-red-700"
+    : "border-slate-200 bg-slate-200 text-slate-600";
 
   return (
     <motion.div
@@ -148,7 +144,7 @@ function VotacaoCard({ v }: { v: Votacao }) {
       onClick={() => setExpanded((e) => !e)}
       onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setExpanded((v) => !v); } }}
       className={`cursor-pointer rounded-xl border px-5 py-4 shadow-sm transition hover:shadow-md ${
-        approved ? "border-green-300 bg-green-50" : "border-red-300 bg-red-50"
+        approved ? "border-green-300 bg-green-50" : rejected ? "border-red-300 bg-red-50" : "border-slate-300 bg-slate-50"
       }`}
     >
       <div className="flex items-start justify-between gap-4">
@@ -162,7 +158,7 @@ function VotacaoCard({ v }: { v: Votacao }) {
                 </span>
                 {propInfo && (
                   <>
-                    <span className={`text-[10px] opacity-40 cursor-help ${approved ? "text-green-800" : "text-red-800"}`}>?</span>
+                    <span className={`text-[10px] opacity-40 cursor-help ${approved ? "text-green-800" : rejected ? "text-red-800" : "text-slate-700"}`}>?</span>
                     <div className="pointer-events-none absolute bottom-full left-0 z-50 mb-2 w-64 rounded-lg border border-slate-100 bg-white p-3 shadow-xl opacity-0 group-hover/prop:opacity-100 transition-opacity duration-150">
                       <p className="text-xs font-bold text-slate-800">{propSigla} — {propInfo.nome}</p>
                       <p className="mt-1 text-[11px] text-slate-500 leading-relaxed">{propInfo.descricao}</p>
@@ -185,9 +181,17 @@ function VotacaoCard({ v }: { v: Votacao }) {
             </p>
           )}
 
-          <p className={`text-sm font-medium leading-relaxed ${approved ? "text-green-900" : "text-red-900"}`}>
+          <p className={`text-sm font-medium leading-relaxed ${approved ? "text-green-900" : rejected ? "text-red-900" : "text-slate-800"}`}>
             {desc || "Votação sem descrição"}
           </p>
+
+          {/* A Câmara não informou aprovado/rejeitado pra este item — explica
+              em vez de deixar o selo neutro sem contexto. */}
+          {semResultado && (
+            <p className="mt-2 text-[11px] text-slate-500 leading-relaxed border-t border-current border-opacity-10 pt-2">
+              A Câmara não registra um resultado de aprovação/rejeição para este tipo de item (destaque, supressão de texto) — a votação ocorreu, mas não decidiu o mérito da proposição principal.
+            </p>
+          )}
 
           {/* Quando a descrição é vaga, mostra o que a sigla significa para dar contexto */}
           {isGeneric && propInfo && (
@@ -200,9 +204,9 @@ function VotacaoCard({ v }: { v: Votacao }) {
 
         <div className="flex flex-shrink-0 flex-col items-end gap-1.5">
           <span className={`rounded-full px-3 py-1.5 text-xs font-bold text-white shadow-sm ${
-            approved ? "bg-green-500" : "bg-red-500"
+            approved ? "bg-green-500" : rejected ? "bg-red-500" : "bg-slate-400"
           }`}>
-            {approved ? "✓ Aprovado" : "✗ Rejeitado"}
+            {approved ? "✓ Aprovado" : rejected ? "✗ Rejeitado" : "◐ Sem resultado"}
           </span>
           <svg className={`h-3.5 w-3.5 text-slate-400 transition-transform ${expanded ? "rotate-180" : ""}`}
             fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor">
@@ -232,10 +236,20 @@ function HudResumo({ votacoes, periodoLabel, amostra }: { votacoes: Votacao[]; p
   const procedural = votacoes.filter((v) => !v.merito);
   const meritoAprovadas = merito.filter((v) => v.aprovacao === 1).length;
   const proceduralAprovadas = procedural.filter((v) => v.aprovacao === 1).length;
+  // Sem resultado (aprovacao null) não conta nem como aprovada nem como
+  // rejeitada — excluído do denominador do "% aprovadas" pra não diluir a
+  // taxa com itens que nunca tiveram chance de entrar no numerador.
+  const meritoComResultado = merito.filter((v) => v.aprovacao != null).length;
+  const proceduralComResultado = procedural.filter((v) => v.aprovacao != null).length;
 
   const propCount: Record<string, number> = {};
   merito.forEach((v) => {
-    const nome = v.proposicao_objeto as string;
+    // proposicao_objeto pode ser null (votação sem proposição identificada
+    // pelo enriquecimento) — sem esse filtro, o cast escondia isso e criava
+    // uma chave literal "null" agrupando esses casos como se fossem a mesma
+    // proposição.
+    if (!v.proposicao_objeto) return;
+    const nome = v.proposicao_objeto;
     propCount[nome] = (propCount[nome] ?? 0) + 1;
   });
   const topProposicoes = Object.entries(propCount).sort((a, b) => b[1] - a[1]).slice(0, 5);
@@ -245,7 +259,7 @@ function HudResumo({ votacoes, periodoLabel, amostra }: { votacoes: Votacao[]; p
   return (
     <div className="space-y-4">
       <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-        <p className="mb-1 text-xs font-bold uppercase tracking-wide text-slate-400">Resumo — {periodoLabel}</p>
+        <h2 className="mb-1 text-xs font-bold uppercase tracking-wide text-slate-400">Resumo — {periodoLabel}</h2>
         {amostra && (
           <p className="mb-3 text-[10px] leading-relaxed text-amber-600">
             Amostra das {total} votações mais recentes do período — pode haver mais registros além destas.
@@ -272,13 +286,15 @@ function HudResumo({ votacoes, periodoLabel, amostra }: { votacoes: Votacao[]; p
               <div>
                 <div className="mb-1 flex items-center justify-between text-[10px] font-semibold uppercase tracking-wide text-slate-300">
                   <span>Votações de mérito ({merito.length})</span>
-                  <span className="text-green-600">{Math.round((meritoAprovadas / merito.length) * 100)}% aprovadas</span>
+                  <span className="text-green-600">
+                    {meritoComResultado > 0 ? `${Math.round((meritoAprovadas / meritoComResultado) * 100)}% aprovadas` : "sem resultado"}
+                  </span>
                 </div>
                 <div className="h-2 overflow-hidden rounded-full bg-slate-100">
                   <motion.div
                     className="h-full rounded-full bg-green-400"
                     initial={{ width: 0 }}
-                    animate={{ width: `${Math.round((meritoAprovadas / merito.length) * 100)}%` }}
+                    animate={{ width: `${meritoComResultado > 0 ? Math.round((meritoAprovadas / meritoComResultado) * 100) : 0}%` }}
                     transition={{ duration: 0.7, ease: "easeOut" }}
                   />
                 </div>
@@ -288,20 +304,22 @@ function HudResumo({ votacoes, periodoLabel, amostra }: { votacoes: Votacao[]; p
               <div>
                 <div className="mb-1 flex items-center justify-between text-[10px] font-semibold uppercase tracking-wide text-slate-300">
                   <span>Despachos e procedurais ({procedural.length})</span>
-                  <span className="text-slate-500">{Math.round((proceduralAprovadas / procedural.length) * 100)}% aprovados</span>
+                  <span className="text-slate-500">
+                    {proceduralComResultado > 0 ? `${Math.round((proceduralAprovadas / proceduralComResultado) * 100)}% aprovados` : "sem resultado"}
+                  </span>
                 </div>
                 <div className="h-2 overflow-hidden rounded-full bg-slate-100">
                   <motion.div
                     className="h-full rounded-full bg-slate-400"
                     initial={{ width: 0 }}
-                    animate={{ width: `${Math.round((proceduralAprovadas / procedural.length) * 100)}%` }}
+                    animate={{ width: `${proceduralComResultado > 0 ? Math.round((proceduralAprovadas / proceduralComResultado) * 100) : 0}%` }}
                     transition={{ duration: 0.7, ease: "easeOut", delay: 0.1 }}
                   />
                 </div>
               </div>
             )}
             <p className="text-[10px] leading-relaxed text-slate-400">
-              Despachos e votos procedurais (parecer, requerimento) costumam ser aprovados quase sempre por serem trâmite administrativo — misturá-los às votações de mérito infla artificialmente a taxa de aprovação.
+              Despachos e votos procedurais (parecer, requerimento) costumam ser aprovados quase sempre por serem trâmite administrativo — misturá-los às votações de mérito infla artificialmente a taxa de aprovação. Votações sem resultado binário registrado pela Câmara (destaque, supressão de texto) ficam fora do cálculo de percentual.
             </p>
           </div>
         )}
@@ -312,7 +330,7 @@ function HudResumo({ votacoes, periodoLabel, amostra }: { votacoes: Votacao[]; p
           magnitude que não existe. */}
       {topProposicoes.length > 0 && topProposicoes[0][1] > 1 && (
         <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-          <p className="mb-3 text-xs font-bold uppercase tracking-wide text-slate-400">Proposições mais votadas no período</p>
+          <h2 className="mb-3 text-xs font-bold uppercase tracking-wide text-slate-400">Proposições mais votadas no período</h2>
           <div className="space-y-2">
             {topProposicoes.map(([nome, count]) => (
               <div key={nome}>

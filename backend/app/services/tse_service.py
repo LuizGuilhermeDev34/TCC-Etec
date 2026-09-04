@@ -1,102 +1,50 @@
 """
 Serviço TSE — patrimônio declarado na eleição 2022.
-Baixa os ZIPs do CDN do TSE uma vez e mantém índice em memória.
 Cargos: 6=Dep.Federal, 7=Dep.Estadual, 5=Senador
+
+Índice lido de um JSON local (backend/app/data/tse_patrimonio_2022.json),
+não baixado da rede em runtime. Achado da auditoria de código (F-04):
+o CDN do TSE bloqueia acesso por IP/ASN de datacenter na borda da Akamai —
+confirmado ao vivo que até a home do tse.jus.br (não só os ZIPs de dados)
+retorna 403 "Access Denied" da Akamai a partir de nuvem, mas carrega normal
+de uma rede residencial. Como o Render também é datacenter, o backend nunca
+conseguiria baixar esses ZIPs em produção. O índice foi baixado uma vez de
+uma rede sem esse bloqueio e processado por scripts/build_tse_index.py —
+ver esse script para reproduzir/atualizar. Fica desatualizado até a próxima
+geração manual, mas funciona sem depender de rede em cada cold start.
 """
-import csv
-import io
-import zipfile
-from typing import Any, Dict, Iterator, List, Optional, Set
+import json
+import unicodedata
+from pathlib import Path
+from typing import Any, Dict, List, Optional
 
-import httpx
+_INDEX_PATH = Path(__file__).resolve().parent.parent / "data" / "tse_patrimonio_2022.json"
 
-# ── URLs dos ZIPs ──────────────────────────────────────────────────────────────
-_CAND_ZIP = "https://cdn.tse.jus.br/estatistica/sead/odsele/consulta_cand/consulta_cand_2022.zip"
-_BENS_ZIP = "https://cdn.tse.jus.br/estatistica/sead/odsele/bem_candidato/bem_candidato_2022.zip"
-
-_CARGOS_RELEVANTES = {"5", "6", "7"}
-
-# ── Índices em memória ─────────────────────────────────────────────────────────
 # nome_upper → list[{"sq", "uf", "cargo"}]
 _cand_index: Optional[Dict[str, List[Dict[str, str]]]] = None
 # sq_candidato → list[{"tipo", "descricao", "valor"}]
 _bens_index: Optional[Dict[str, List[Dict[str, Any]]]] = None
-_loading = False
 
 
-async def _download_zip(url: str) -> bytes:
-    async with httpx.AsyncClient(timeout=90.0) as client:
-        r = await client.get(url)
-        r.raise_for_status()
-        return r.content
-
-
-def _iter_csv_from_zip(data: bytes, encoding: str = "latin-1") -> Iterator[Dict[str, str]]:
-    with zipfile.ZipFile(io.BytesIO(data)) as zf:
-        brasil = [n for n in zf.namelist() if "BRASIL" in n.upper() and n.endswith(".csv")]
-        name = brasil[0] if brasil else zf.namelist()[0]
-        with zf.open(name) as f:
-            reader = csv.DictReader(io.TextIOWrapper(f, encoding=encoding), delimiter=";")
-            for row in reader:
-                yield row
-
-
-# asyncio.gather sem importar asyncio no topo (evita circular import)
-async def _ensure_indices() -> None:
-    global _loading, _cand_index, _bens_index
+def _ensure_indices() -> None:
+    global _cand_index, _bens_index
     if _cand_index is not None:
         return
-    if _loading:
-        # Aguarda carregamento em progresso
-        import asyncio
-        while _loading:
-            await asyncio.sleep(0.5)
+    if not _INDEX_PATH.exists():
+        # Sem o arquivo local, não há como calcular patrimônio (a fonte de
+        # rede está bloqueada — ver docstring do módulo). Índices vazios em
+        # vez de exceção: _get_patrimonio já trata "sem dado" como {}.
+        _cand_index = {}
+        _bens_index = {}
         return
-    _loading = True
-    try:
-        import asyncio
-        cand_bytes, bens_bytes = await asyncio.gather(
-            _download_zip(_CAND_ZIP),
-            _download_zip(_BENS_ZIP),
-        )
-
-        ci: Dict[str, List[Dict[str, str]]] = {}
-        sqs_relevantes: Set[str] = set()
-        for row in _iter_csv_from_zip(cand_bytes):
-            cargo = row.get("CD_CARGO", "")
-            if cargo not in _CARGOS_RELEVANTES:
-                continue
-            nome = row.get("NM_CANDIDATO", "").upper().strip()
-            sq = row.get("SQ_CANDIDATO", "")
-            if not nome or not sq:
-                continue
-            ci.setdefault(nome, []).append({"sq": sq, "uf": row.get("SG_UF", ""), "cargo": cargo})
-            sqs_relevantes.add(sq)
-        _cand_index = ci
-
-        bi: Dict[str, List[Dict[str, Any]]] = {}
-        for row in _iter_csv_from_zip(bens_bytes):
-            sq = row.get("SQ_CANDIDATO", "").strip()
-            if not sq or sq not in sqs_relevantes:
-                continue
-            valor_str = row.get("VR_BEM_CANDIDATO", "0").replace(".", "").replace(",", ".")
-            try:
-                valor = float(valor_str)
-            except ValueError:
-                valor = 0.0
-            bi.setdefault(sq, []).append({
-                "tipo": row.get("DS_TIPO_BEM_CANDIDATO", "Outros"),
-                "descricao": row.get("DS_BEM_CANDIDATO", ""),
-                "valor": valor,
-            })
-        _bens_index = bi
-    finally:
-        _loading = False
+    with open(_INDEX_PATH, "r", encoding="utf-8") as f:
+        data = json.load(f)
+    _cand_index = data.get("candidatos", {})
+    _bens_index = data.get("bens", {})
 
 
 def _normalizar(nome: str) -> str:
     """Remove acentos e deixa em maiúsculo para comparação fuzzy."""
-    import unicodedata
     nfkd = unicodedata.normalize("NFKD", nome.upper())
     return "".join(c for c in nfkd if not unicodedata.combining(c))
 
@@ -154,7 +102,7 @@ def _sumarizar(bens: List[Dict[str, Any]]) -> Dict[str, Any]:
 
 
 async def _get_patrimonio(nome: str, uf: Optional[str], cargo_cod: str) -> Dict[str, Any]:
-    await _ensure_indices()
+    _ensure_indices()
     sq = _buscar_sq(nome, uf, cargo_cod)
     if not sq or _bens_index is None:
         return {}

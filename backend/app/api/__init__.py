@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from ..core import RateLimitMiddleware
+from ..core import RateLimitMiddleware, SecurityHeadersMiddleware
 from ..core.config import get_settings
 from .v1 import router as api_v1_router
 
@@ -32,7 +32,19 @@ def create_app() -> FastAPI:
         allow_credentials=False,
         allow_methods=["*"],
         allow_headers=["*"],
+        # Sem isso, o header Retry-After do 429 (rate_limit.py) chega na
+        # resposta real mas fica invisível pro fetch()/XHR do navegador —
+        # por spec CORS, só os headers "safelisted" (content-type,
+        # content-length...) são expostos ao JS por padrão. Confirmado ao
+        # vivo: curl via SO via corretamente o header, um fetch() no
+        # navegador nunca o veria sem esta declaração.
+        expose_headers=["Retry-After"],
     )
+
+    # Camada mais externa (aplica em toda resposta, inclusive as de erro do
+    # rate limit) — API pública somente-leitura não tinha nenhum header de
+    # segurança além do content-type default do FastAPI/Starlette.
+    app.add_middleware(SecurityHeadersMiddleware)
 
     app.include_router(api_v1_router, prefix="/api")
 

@@ -5,7 +5,7 @@
  * strings que já têm horário (essas seguem sendo interpretadas como local,
  * que é o comportamento correto).
  */
-function toLocalDate(iso: string): Date {
+export function toLocalDate(iso: string): Date {
   const withTime = iso.includes("T") ? iso : `${iso}T00:00:00`;
   return new Date(withTime);
 }

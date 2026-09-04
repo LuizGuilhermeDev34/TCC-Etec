@@ -49,6 +49,27 @@ _PROCEDURAL_RE = re.compile(
 )
 
 
+def _eh_merito(descricao_bruta: str, nominal_confirmado: bool = False) -> bool:
+    """Critério único de mérito, compartilhado por _to_votacao e
+    _fetch_votacao_party_stats — antes eram duas expressões escritas
+    separadamente que podiam divergir pra uma mesma votação (achado da
+    auditoria de código, F-28).
+
+    Mérito = decisão sobre o conteúdo de uma proposição, não trâmite
+    processual (requerimento, parecer, deferimento) — mesmo quando o
+    trâmite é votado nominalmente, com placar.
+
+    "Nominal" (tem voto individual real, não unanimidade/consenso) pode ser
+    sabido de duas formas: já confirmado por outro sinal mais forte (ex:
+    _fetch_votacao_party_stats só chega aqui depois de já ter contado
+    votos individuais reais via /votos — nominal_confirmado=True), ou, na
+    ausência desse sinal, o proxy textual de que a própria descrição bruta
+    da Câmara embute um placar ("Sim: X; Não: Y; Total: Z").
+    """
+    nominal = nominal_confirmado or bool(_VOTOS_SUFFIX_RE.search(descricao_bruta))
+    return nominal and not _PROCEDURAL_RE.search(descricao_bruta)
+
+
 def _limpar_descricao(desc: str) -> str:
     return _VOTOS_SUFFIX_RE.sub("", desc).strip()
 
@@ -215,7 +236,12 @@ async def get_partido_by_id(partido_id: int) -> Optional[Dict[str, Any]]:
     data = payload.get("dados")
     if not data:
         return None
-    return _parse_partido(data)
+    partido = _parse_partido(data)
+    # Mesma correção de get_partidos: totalMembros cru da Câmara não
+    # corresponde à contagem real de deputados em exercício.
+    deputados_list = await get_deputados()
+    partido["totalMembros"] = sum(1 for d in deputados_list if d.sigla_partido == partido["sigla"])
+    return partido
 
 
 def _partido_fallback(item: Dict[str, Any]) -> Dict[str, Any]:
@@ -268,6 +294,19 @@ async def get_partidos() -> List[Dict[str, Any]]:
             enriched.append(detail)
         elif item.get("sigla"):
             enriched.append(_partido_fallback(item))
+
+    # totalMembros da Câmara não corresponde à contagem de deputados em
+    # exercício — confirmado ao vivo: DC aparece com 0 (tem 1 deputado real,
+    # José Carlos Araujo-BA), PDT aparece com 10 (tem 9). Recalcula a partir
+    # da lista real de deputados, já buscada e cacheada 6h em get_deputados,
+    # em vez de confiar no campo cru — também corrige de graça o fallback
+    # acima, que fixava 0 quando o detalhe individual falhava.
+    deputados_list = await get_deputados()
+    contagem_real: Dict[str, int] = {}
+    for d in deputados_list:
+        contagem_real[d.sigla_partido] = contagem_real.get(d.sigla_partido, 0) + 1
+    for p in enriched:
+        p["totalMembros"] = contagem_real.get(p["sigla"], 0)
 
     _cache.set(cache_key, enriched)
     return enriched
@@ -523,8 +562,11 @@ def _to_votacao(data: Dict[str, Any]) -> Votacao:
         sigla_orgao=data.get("siglaOrgao", ""),
         proposicao_objeto=data.get("proposicaoObjeto"),
         descricao=_limpar_descricao(descricao_bruta),
-        aprovacao=int(data.get("aprovacao") or 0),
-        merito=bool(_VOTOS_SUFFIX_RE.search(descricao_bruta)) and not _PROCEDURAL_RE.search(descricao_bruta),
+        # Preserva None em vez de forçar 0 ("Rejeitado") — a Câmara não
+        # registra resultado binário pra alguns objetos de votação (destaque,
+        # supressão de texto), e "sem resultado" não é o mesmo que "rejeitado".
+        aprovacao=int(data["aprovacao"]) if data.get("aprovacao") is not None else None,
+        merito=_eh_merito(descricao_bruta),
     )
 
 
@@ -744,11 +786,9 @@ async def _fetch_votacao_party_stats(
             "sim": sim,
             "nao": nao,
             "abstencao": abstencao,
-            # Aqui já sabemos que é nominal (sim+nao+abstencao>0) — falta só
-            # excluir trâmite processual (requerimento/parecer/deferimento).
-            # Sem isso, "100% de aprovação" pode vir de uma única votação
-            # processual em 6 meses — já aconteceu (10 votos, 1 votação).
-            "merito": not _PROCEDURAL_RE.search(descricao_bruta),
+            # Já sabemos que é nominal (sim+nao+abstencao>0), então informamos
+            # isso ao critério compartilhado em vez de repetir a checagem.
+            "merito": _eh_merito(descricao_bruta, nominal_confirmado=True),
         }
     except Exception:
         return None
@@ -768,10 +808,13 @@ async def get_partido_votacoes_stats(partido_id: int) -> Dict[str, Any]:
     from datetime import date, timedelta
     data_inicio = (date.today() - timedelta(days=180)).strftime("%Y-%m-%d")
 
-    # siglaOrgao não é suportado como filtro; busca ampla e filtra PLEN localmente
+    # siglaOrgao não é suportado como filtro; busca ampla e filtra PLEN localmente.
+    # ordem/ordenarPor explícitos (confirmado ao vivo que já é o default hoje,
+    # mas sem garantia de que a Câmara não mude isso sem aviso — achado da
+    # auditoria de código, F-29).
     payload = await _fetch_camara_json(
         "/votacoes",
-        params={"dataInicio": data_inicio, "itens": 100},
+        params={"dataInicio": data_inicio, "itens": 100, "ordem": "DESC", "ordenarPor": "dataHoraRegistro"},
     )
     votacoes_list = [v for v in payload.get("dados", []) if v.get("siglaOrgao") == "PLEN"][:20]
 
@@ -912,8 +955,6 @@ async def get_partido_lideranca(partido_id: int) -> Dict[str, Any]:
         return {}
 
     sigla = partido["sigla"]
-    total_membros = partido.get("totalMembros") or 0
-    popularidade_camara = round((total_membros / 513) * 100, 1)
 
     lider_raw = partido.get("lider") or {}
     lider_nome = lider_raw.get("nome", "")
@@ -955,6 +996,12 @@ async def get_partido_lideranca(partido_id: int) -> Dict[str, Any]:
     pres_pv = safe(pres_pv)
     senadores_list = senadores_list if isinstance(senadores_list, list) else []
     deputados_list = deputados_list if isinstance(deputados_list, list) else []
+
+    # totalMembros cru da Câmara não corresponde à contagem real de
+    # deputados em exercício (ver get_partidos) — recalcula a partir da
+    # lista já buscada acima, em vez do campo bruto de partido.get(...).
+    total_membros = sum(1 for d in deputados_list if d.sigla_partido == sigla)
+    popularidade_camara = round((total_membros / 513) * 100, 1)
 
     # Try to find the presidente's internal profile (senator first, then deputy)
     codigo_senador: Optional[str] = None
@@ -1079,7 +1126,10 @@ async def get_votacoes_recentes(
     if cached is not None:
         return cached
 
-    params: Dict[str, Any] = {"itens": itens}
+    # ordem/ordenarPor explícitos pelo mesmo motivo de get_partido_votacoes_stats
+    # (F-29): já é o comportamento padrão hoje, mas não depende de um default
+    # não documentado da Câmara continuar assim.
+    params: Dict[str, Any] = {"itens": itens, "ordem": "DESC", "ordenarPor": "dataHoraRegistro"}
     if data_inicio:
         params["dataInicio"] = data_inicio
     if data_fim:

@@ -10,7 +10,11 @@ class Votacao:
     sigla_orgao: str
     proposicao_objeto: Optional[str]
     descricao: str
-    aprovacao: int
+    # None quando a Câmara não registra um resultado binário pra este objeto
+    # de votação (destaque, supressão de texto — ex: "Mantido o texto.").
+    # Já foi `int(... or 0)`, o que convertia "sem resultado" em "Rejeitado"
+    # silenciosamente — confirmado ao vivo em ~3-5% das votações reais.
+    aprovacao: Optional[int]
     # Heurística: True quando a descrição bruta da Câmara trazia um placar
     # embutido ("Sim: X; Não: Y; Total: Z") E a descrição não contém um verbo
     # de trâmite processual (requerimento, parecer, deferido...) — só placar

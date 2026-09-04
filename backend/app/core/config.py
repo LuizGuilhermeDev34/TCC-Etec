@@ -1,16 +1,16 @@
 from functools import lru_cache
-from pydantic import AnyHttpUrl
 from pydantic_settings import BaseSettings
 
 
 class Settings(BaseSettings):
-    tse_base_url: AnyHttpUrl = "https://api.tse.jus.br"
-    camara_base_url: AnyHttpUrl = "https://dadosabertos.camara.leg.br/api/v2"
-    senado_base_url: AnyHttpUrl = "https://legis.senado.leg.br/dadosabertos"
-    portal_transparencia_token: str = ""
-    cache_ttl_seconds: int = 300
+    # As URLs base de cada fonte (Câmara/Senado/TSE) e os TTLs de cache vivem
+    # como constantes dentro de cada services/*_service.py, não aqui — os
+    # campos que existiam pra isso (tse_base_url, camara_base_url,
+    # senado_base_url, cache_ttl_seconds, app_name, portal_transparencia_token)
+    # nunca foram lidos em lugar nenhum do código (achado da auditoria de
+    # código, F-49). `debug` é o único campo desta classe realmente usado
+    # (gate de /docs em app/api/__init__.py).
     debug: bool = False
-    app_name: str = "democratizacao-dados"
 
     model_config = {"env_prefix": "APP_", "case_sensitive": False}
 

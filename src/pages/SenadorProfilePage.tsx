@@ -7,17 +7,12 @@ import { OfflineBanner } from "../components/OfflineBanner";
 import { DonutChart } from "../components/DonutChart";
 import { PatrimonioCard } from "../components/PatrimonioCard";
 import { api, classifyApiError } from "../services/api";
+import { toLocalDate } from "../utils/dateFormat";
+import { partyColorLight } from "../utils/partyColors";
 import { containerVariants, slideInLeft } from "../animations";
 import type { ApiStatus, DeputadoVotacao, Senador } from "../types";
 
-const PARTY_COLORS: Record<string, string> = {
-  PT: "bg-red-100 text-red-700", PL: "bg-blue-100 text-blue-700",
-  MDB: "bg-green-100 text-green-700", UNIÃO: "bg-slate-200 text-slate-700",
-  PSD: "bg-purple-100 text-purple-700", PSB: "bg-pink-100 text-pink-700",
-  PDT: "bg-orange-100 text-orange-700", PSOL: "bg-rose-100 text-rose-700",
-  PP: "bg-yellow-100 text-yellow-700", PODE: "bg-sky-100 text-sky-700",
-};
-function partyColor(s: string) { return PARTY_COLORS[s] ?? "bg-slate-100 text-slate-600"; }
+function partyColor(s: string) { return partyColorLight(s); }
 
 function voteColor(tipo: string) {
   const t = tipo.toLowerCase();
@@ -93,7 +88,7 @@ export function SenadorProfilePage() {
     setStatusVot("loading");
     api.senado.senadorVotacoes(codigo)
       .then((v) => { if (!cancelled) { setVotacoes(v); setStatusVot("success"); } })
-      .catch(() => { if (!cancelled) setStatusVot("error"); });
+      .catch((e: Error) => { if (!cancelled) setStatusVot(classifyApiError(e)); });
 
     return () => { cancelled = true; };
   }
@@ -118,7 +113,7 @@ export function SenadorProfilePage() {
         {statusSen === "loading" && <LoadingSpinner message="Carregando perfil..." count={3} />}
         {statusSen === "not_found" && (
           <div className="rounded-lg border border-slate-200 bg-slate-50 p-6 text-center">
-            <h3 className="font-semibold text-slate-700">Senador não encontrado</h3>
+            <h1 className="font-semibold text-slate-700">Senador não encontrado</h1>
             <p className="mt-1 text-sm text-slate-500">Não existe senador com este código na base atual do Senado.</p>
           </div>
         )}
@@ -246,8 +241,10 @@ export function SenadorProfilePage() {
               {statusVot === "success" && stats.total === 0 && (
                 <p className="text-sm text-slate-400">Nenhuma votação encontrada para este senador.</p>
               )}
-              {statusVot === "error" && (
-                <p className="text-sm text-slate-400">Dados de votação indisponíveis para este senador.</p>
+              {(statusVot === "error" || statusVot === "offline" || statusVot === "rate_limited") && (
+                <p className="text-sm text-slate-400">
+                  {statusVot === "rate_limited" ? "Muitas requisições — aguarde um instante e recarregue." : "Dados de votação indisponíveis para este senador."}
+                </p>
               )}
             </div>
 
@@ -374,7 +371,7 @@ export function SenadorProfilePage() {
                           <div className="mb-1 flex flex-wrap items-center gap-1.5">
                             <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">VOTAÇÃO</span>
                             <span className={`rounded px-1.5 py-0.5 text-[11px] font-semibold ${vc.bg} ${vc.text}`}>{vc.label}</span>
-                            {v.data && <span className="text-xs text-slate-400">{new Date(v.data + "T00:00:00").toLocaleDateString("pt-BR", { day: "2-digit", month: "long", year: "numeric" })}</span>}
+                            {v.data && <span className="text-xs text-slate-400">{toLocalDate(v.data).toLocaleDateString("pt-BR", { day: "2-digit", month: "long", year: "numeric" })}</span>}
                           </div>
                           {label && <p className="font-semibold text-sm text-slate-800">{label}</p>}
                           {v.proposicao_ementa && (

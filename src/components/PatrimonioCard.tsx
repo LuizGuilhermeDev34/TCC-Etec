@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
+import { classifyApiError } from "../services/api";
 import type { ApiStatus, Patrimonio } from "../types";
 
 function formatMoney(v: number) {
@@ -20,7 +21,7 @@ export function PatrimonioCard({ fetchPatrimonio, tseLink }: Props) {
     setStatus("loading");
     fetchPatrimonio()
       .then((p) => { if (!cancelled) { setPatrimonio(p); setStatus("success"); } })
-      .catch(() => { if (!cancelled) setStatus("error"); });
+      .catch((e: Error) => { if (!cancelled) setStatus(classifyApiError(e)); });
     return () => { cancelled = true; };
   }, []);
 
@@ -98,7 +99,7 @@ export function PatrimonioCard({ fetchPatrimonio, tseLink }: Props) {
         </>
       )}
 
-      {(status === "error" || (status === "success" && (!patrimonio || patrimonio.total === 0))) && (
+      {(status === "error" || status === "offline" || status === "rate_limited" || (status === "success" && (!patrimonio || patrimonio.total === 0))) && (
         <>
           <p className="text-xs text-slate-500 mb-3">
             Dados não disponíveis via API. Consulte a declaração completa diretamente no TSE.

@@ -2,7 +2,9 @@ import React, { useEffect, useMemo, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Link } from "react-router-dom";
 import { PageTransition } from "../components/PageTransition";
-import { api } from "../services/api";
+import { OfflineBanner } from "../components/OfflineBanner";
+import { api, classifyApiError } from "../services/api";
+import { toLocalDate } from "../utils/dateFormat";
 import type { ApiStatus, CompararDeputado, CompararResult, Deputado } from "../types";
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
@@ -13,10 +15,7 @@ function fmtBRL(value: number) {
 
 function calcIdade(dataNasc?: string | null) {
   if (!dataNasc) return null;
-  // Data pura (sem T) é interpretada como UTC — em fuso negativo pode
-  // deslocar o ano para nascimentos em 1º de janeiro. Forçar meia-noite local.
-  const withTime = dataNasc.includes("T") ? dataNasc : `${dataNasc}T00:00:00`;
-  const d = new Date(withTime);
+  const d = toLocalDate(dataNasc);
   if (isNaN(d.getTime())) return null;
   return new Date().getFullYear() - d.getFullYear();
 }
@@ -114,6 +113,7 @@ function CustomSelect({
               <button
                 type="button"
                 onMouseDown={() => { onChange(""); setOpen(false); }}
+                onClick={() => { onChange(""); setOpen(false); }}
                 className={`w-full px-3 py-2 text-left text-xs font-semibold ${!value ? "bg-slate-100 text-slate-800" : "text-slate-500 hover:bg-slate-50"} transition`}
               >
                 {placeholder}
@@ -124,6 +124,7 @@ function CustomSelect({
                 <button
                   type="button"
                   onMouseDown={() => { onChange(opt); setOpen(false); }}
+                  onClick={() => { onChange(opt); setOpen(false); }}
                   className={`w-full px-3 py-2 text-left text-xs font-semibold transition ${opt === value ? "bg-blue-50 text-blue-700" : "text-slate-700 hover:bg-slate-50"}`}
                 >
                   {opt}
@@ -278,7 +279,9 @@ function DeputadoSelector({
                   filtered.map((d) => (
                     <li key={d.id} className="border-b border-slate-50 last:border-0">
                       <button
+                        type="button"
                         onMouseDown={() => pick(d)}
+                        onClick={() => pick(d)}
                         className="flex w-full items-center gap-3 px-4 py-2.5 text-left hover:bg-slate-50 transition"
                       >
                         <DeputadoAvatar dep={d} size="sm" accentBg={accentBg} />
@@ -619,6 +622,7 @@ function ComparisonView({ result }: { result: CompararResult }) {
           fmt={fmtBRL}
           nameA={nomeA}
           nameB={nomeB}
+          indisponivel={a.patrimonio_indisponivel || b.patrimonio_indisponivel}
         />
         <MetricCard
           label="Gastos CEAP"
@@ -667,11 +671,13 @@ export function CompararPage() {
   const [result, setResult] = useState<CompararResult | null>(null);
   const [status, setStatus] = useState<ApiStatus>("idle");
 
-  useEffect(() => {
+  function loadAll() {
+    setStatusAll("loading");
     api.camara.deputados()
       .then((d) => { setAll(d); setStatusAll("success"); })
-      .catch(() => setStatusAll("error"));
-  }, []);
+      .catch((e: Error) => setStatusAll(classifyApiError(e)));
+  }
+  useEffect(loadAll, []);
 
   function loadComparacao() {
     if (!selA || !selB) return;
@@ -680,7 +686,7 @@ export function CompararPage() {
     api.comparar
       .deputados(selA.id, selB.id)
       .then((r) => { setResult(r); setStatus("success"); })
-      .catch(() => setStatus("error"));
+      .catch((e: Error) => setStatus(classifyApiError(e)));
   }
 
   useEffect(() => {
@@ -695,7 +701,7 @@ export function CompararPage() {
     api.comparar
       .deputados(selA.id, selB.id)
       .then((r) => { if (!cancelled) { setResult(r); setStatus("success"); } })
-      .catch(() => { if (!cancelled) setStatus("error"); });
+      .catch((e: Error) => { if (!cancelled) setStatus(classifyApiError(e)); });
     return () => { cancelled = true; };
   }, [selA, selB]);
 
@@ -742,6 +748,19 @@ export function CompararPage() {
           />
         </div>
 
+        {/* Lista de deputados (base da busca acima) falhou ao carregar — sem
+            isso, os seletores ficavam eternamente em "carregando"/"nenhum
+            resultado", sem o usuário nunca saber que era falha de rede. */}
+        {(statusAll === "error" || statusAll === "offline" || statusAll === "rate_limited") && (
+          <div className="mb-6">
+            <OfflineBanner
+              source="API da Câmara"
+              kind={statusAll === "rate_limited" ? "rate_limited" : "offline"}
+              onRetry={loadAll}
+            />
+          </div>
+        )}
+
         {/* States */}
         {status === "idle" && !selA && !selB && (
           <div className="flex flex-col items-center gap-3 py-20 text-center text-slate-400">
@@ -766,15 +785,18 @@ export function CompararPage() {
           </div>
         )}
 
-        {status === "error" && (
-          <div className="rounded-2xl border border-red-100 bg-red-50 p-6 text-center text-sm text-red-600">
-            <p>Não foi possível carregar a comparação. Pode ser instabilidade da fonte oficial ou muitas requisições recentes.</p>
-            <button
-              onClick={loadComparacao}
-              className="mt-3 rounded-md bg-red-600 px-3 py-1.5 text-sm font-medium text-white transition-colors hover:bg-red-700"
-            >
-              Tentar novamente
-            </button>
+        {(status === "error" || status === "offline" || status === "rate_limited") && (
+          <OfflineBanner
+            source="API da Câmara"
+            kind={status === "rate_limited" ? "rate_limited" : "offline"}
+            onRetry={loadComparacao}
+          />
+        )}
+
+        {status === "not_found" && (
+          <div className="rounded-lg border border-slate-200 bg-slate-50 p-6 text-center">
+            <h3 className="font-semibold text-slate-700">Deputado não encontrado</h3>
+            <p className="mt-1 text-sm text-slate-500">Um dos dois IDs não existe na base atual da Câmara.</p>
           </div>
         )}
 

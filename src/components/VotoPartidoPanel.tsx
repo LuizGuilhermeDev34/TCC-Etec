@@ -1,9 +1,7 @@
 import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
-import { api } from "../services/api";
-import type { VotacaoVotos } from "../types";
-
-type Status = "loading" | "success" | "error";
+import { api, classifyApiError } from "../services/api";
+import type { ApiStatus, VotacaoVotos } from "../types";
 
 /**
  * Painel de voto por partido para uma votação — busca sob demanda
@@ -13,17 +11,18 @@ type Status = "loading" | "success" | "error";
  * explicitamente em vez de um painel vazio.
  */
 export function VotoPartidoPanel({ votacaoId }: { votacaoId: string }) {
-  const [status, setStatus] = useState<Status>("loading");
+  const [status, setStatus] = useState<ApiStatus>("loading");
   const [data, setData] = useState<VotacaoVotos | null>(null);
 
-  useEffect(() => {
+  function load() {
     let cancelled = false;
     setStatus("loading");
     api.camara.votacaoVotos(votacaoId)
       .then((d) => { if (!cancelled) { setData(d); setStatus("success"); } })
-      .catch(() => { if (!cancelled) setStatus("error"); });
+      .catch((e: Error) => { if (!cancelled) setStatus(classifyApiError(e)); });
     return () => { cancelled = true; };
-  }, [votacaoId]);
+  }
+  useEffect(load, [votacaoId]);
 
   if (status === "loading") {
     return (
@@ -35,11 +34,19 @@ export function VotoPartidoPanel({ votacaoId }: { votacaoId: string }) {
     );
   }
 
-  if (status === "error") {
+  if (status === "error" || status === "offline" || status === "rate_limited") {
     return (
-      <p className="mt-3 border-t border-slate-900/10 pt-3 text-xs text-slate-500">
-        Não foi possível carregar o voto por partido.
-      </p>
+      <div className="mt-3 flex items-center justify-between gap-3 border-t border-slate-900/10 pt-3">
+        <p className="text-xs text-slate-500">
+          {status === "rate_limited" ? "Muitas requisições — aguarde um instante." : "Não foi possível carregar o voto por partido."}
+        </p>
+        <button
+          onClick={load}
+          className="flex-shrink-0 rounded-md border border-slate-300 px-2 py-1 text-[11px] font-medium text-slate-600 hover:bg-slate-100"
+        >
+          Tentar novamente
+        </button>
+      </div>
     );
   }
 
@@ -83,7 +90,7 @@ export function VotoPartidoPanel({ votacaoId }: { votacaoId: string }) {
                 )}
               </div>
               <span className="w-28 flex-shrink-0 text-right text-slate-500">
-                {p.sim} sim · {p.nao} não{p.abstencao > 0 ? ` · ${p.abstencao} abst.` : ""}
+                {p.sim} sim · {p.nao} não{p.abstencao > 0 ? ` · ${p.abstencao} abst.` : ""}{p.outros > 0 ? ` · ${p.outros} outros` : ""}
               </span>
             </div>
           );

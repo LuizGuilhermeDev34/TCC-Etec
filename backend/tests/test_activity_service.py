@@ -7,6 +7,8 @@ registros mais recentes (não uma amostra representativa do período), e
 sem nenhuma separação mérito/procedural, então "20 aprovadas, 0
 rejeitadas" parecia (e não era) a taxa real de aprovação do Congresso.
 """
+from datetime import datetime, timedelta
+
 import pytest
 
 from app.services import activity_service, camara_service
@@ -51,10 +53,17 @@ async def test_nao_corta_votacoes_em_20(monkeypatch):
 
 
 async def test_pede_ate_100_itens_e_envia_data_fim(monkeypatch):
+    # F-31 da auditoria de código: a asserção original só checava
+    # "data_fim is not None", o que passaria mesmo se o cálculo trocasse
+    # "amanhã" por "hoje" ou por qualquer outra string não-nula — não
+    # provava que o dia atual entra por inteiro no período (ver comentário
+    # de get_recent_activities sobre dataFim ser quase-exclusivo na Câmara).
     captured = {}
+    antes = datetime.now()
 
     async def fake_get_votacoes(itens, data_inicio, data_fim):
         captured["itens"] = itens
+        captured["data_inicio"] = data_inicio
         captured["data_fim"] = data_fim
         return []
 
@@ -65,9 +74,21 @@ async def test_pede_ate_100_itens_e_envia_data_fim(monkeypatch):
     monkeypatch.setattr(activity_service, "get_proposicoes", fake_get_proposicoes)
 
     await activity_service.get_recent_activities()
+    depois = datetime.now()
 
     assert captured["itens"] == 100
-    assert captured["data_fim"] is not None
+    # Tolera a chamada cair um pouco antes/depois da virada do dia: aceita
+    # o valor calculado a partir do instante anterior ou posterior à chamada.
+    data_inicio_esperada = {
+        (antes - timedelta(days=30)).strftime("%Y-%m-%d"),
+        (depois - timedelta(days=30)).strftime("%Y-%m-%d"),
+    }
+    data_fim_esperada = {
+        (antes + timedelta(days=1)).strftime("%Y-%m-%d"),
+        (depois + timedelta(days=1)).strftime("%Y-%m-%d"),
+    }
+    assert captured["data_inicio"] in data_inicio_esperada
+    assert captured["data_fim"] in data_fim_esperada
 
 
 async def test_repassa_merito_para_a_activity(monkeypatch):

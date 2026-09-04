@@ -5,34 +5,12 @@ import { PageTransition } from "../components/PageTransition";
 import { LoadingSpinner } from "../components/LoadingSpinner";
 import { OfflineBanner } from "../components/OfflineBanner";
 import { api, classifyApiError } from "../services/api";
+import { toLocalDate } from "../utils/dateFormat";
+import { partyColorSolidRing, partyInitials as initials } from "../utils/partyColors";
 import type { ApiStatus, Deputado, Partido, PartidoGastos, PartidoLideranca, PartidoLiderInfo, PartidoVotacoesStats } from "../types";
 
-const SIGLA_COLORS: Record<string, { bg: string; text: string; ring: string }> = {
-  PT:            { bg: "bg-red-500",    text: "text-white", ring: "ring-red-200" },
-  PL:            { bg: "bg-blue-500",   text: "text-white", ring: "ring-blue-200" },
-  MDB:           { bg: "bg-green-500",  text: "text-white", ring: "ring-green-200" },
-  UNIÃO:         { bg: "bg-slate-700",  text: "text-white", ring: "ring-slate-300" },
-  PSD:           { bg: "bg-slate-500",  text: "text-white", ring: "ring-slate-200" },
-  PSB:           { bg: "bg-pink-500",   text: "text-white", ring: "ring-pink-200" },
-  PDT:           { bg: "bg-orange-500", text: "text-white", ring: "ring-orange-200" },
-  PSOL:          { bg: "bg-rose-500",   text: "text-white", ring: "ring-rose-200" },
-  REPUBLICANOS:  { bg: "bg-violet-600", text: "text-white", ring: "ring-violet-200" },
-  PP:            { bg: "bg-yellow-500", text: "text-white", ring: "ring-yellow-200" },
-  PODE:          { bg: "bg-sky-500",    text: "text-white", ring: "ring-sky-200" },
-  AVANTE:        { bg: "bg-teal-500",   text: "text-white", ring: "ring-teal-200" },
-  SOLIDARIEDADE: { bg: "bg-amber-500",  text: "text-white", ring: "ring-amber-200" },
-  PV:            { bg: "bg-lime-600",   text: "text-white", ring: "ring-lime-200" },
-  CIDADANIA:     { bg: "bg-cyan-600",   text: "text-white", ring: "ring-cyan-200" },
-  PATRIOTA:      { bg: "bg-emerald-600",text: "text-white", ring: "ring-emerald-200" },
-  AGIR:          { bg: "bg-indigo-500", text: "text-white", ring: "ring-indigo-200" },
-};
-
 function getColor(sigla: string) {
-  return SIGLA_COLORS[sigla] ?? { bg: "bg-blue-400", text: "text-white", ring: "ring-blue-200" };
-}
-
-function initials(sigla: string) {
-  return sigla.length <= 2 ? sigla : sigla.slice(0, 2);
+  return partyColorSolidRing(sigla);
 }
 
 function fmtBRL(val: number) {
@@ -40,8 +18,7 @@ function fmtBRL(val: number) {
 }
 
 function fmtDate(iso: string) {
-  const d = new Date(iso + "T00:00:00");
-  return d.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric" });
+  return toLocalDate(iso).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric" });
 }
 
 function deputadoIdFromUri(uri?: string): number | null {
@@ -64,7 +41,7 @@ function SectionHeader({ icon, title, badge }: { icon: React.ReactNode; title: s
       <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-slate-100">
         {icon}
       </div>
-      <span className="text-sm font-bold text-slate-800">{title}</span>
+      <h2 className="text-sm font-bold text-slate-800">{title}</h2>
       {badge}
     </div>
   );
@@ -72,7 +49,7 @@ function SectionHeader({ icon, title, badge }: { icon: React.ReactNode; title: s
 
 // ── Column chart ──────────────────────────────────────────────────────────────
 
-function DonutChart({ sim, nao, abstencao }: { sim: number; nao: number; abstencao: number }) {
+function ColumnChart({ sim, nao, abstencao }: { sim: number; nao: number; abstencao: number }) {
   const total = sim + nao + abstencao;
   if (total === 0) return <p className="text-sm text-slate-400">Sem dados de votação</p>;
 
@@ -373,12 +350,12 @@ export function PartidoProfilePage() {
     setStatusDep("loading");
     api.camara.deputados()
       .then((all) => { if (!cancelled) { setDeputados(all); setStatusDep("success"); } })
-      .catch(() => { if (!cancelled) setStatusDep("error"); });
+      .catch((e: Error) => { if (!cancelled) setStatusDep(classifyApiError(e)); });
 
     setStatusVot("loading");
     api.camara.partidoVotacoesStats(nid)
       .then((s) => { if (!cancelled) { setVotStats(s); setStatusVot("success"); } })
-      .catch(() => { if (!cancelled) setStatusVot("error"); });
+      .catch((e: Error) => { if (!cancelled) setStatusVot(classifyApiError(e)); });
 
     const votRefresh = setInterval(() => {
       api.camara.partidoVotacoesStats(nid)
@@ -389,12 +366,12 @@ export function PartidoProfilePage() {
     setStatusGastos("loading");
     api.camara.partidoGastos(nid)
       .then((g) => { if (!cancelled) { setGastos(g); setStatusGastos("success"); } })
-      .catch(() => { if (!cancelled) setStatusGastos("error"); });
+      .catch((e: Error) => { if (!cancelled) setStatusGastos(classifyApiError(e)); });
 
     setStatusLideranca("loading");
     api.camara.partidoLideranca(nid)
       .then((l) => { if (!cancelled) { setLideranca(l); setStatusLideranca("success"); } })
-      .catch(() => { if (!cancelled) setStatusLideranca("error"); });
+      .catch((e: Error) => { if (!cancelled) setStatusLideranca(classifyApiError(e)); });
 
     return () => { cancelled = true; clearInterval(votRefresh); };
   }, [id]);
@@ -435,7 +412,7 @@ export function PartidoProfilePage() {
 
         {statusPartido === "not_found" && (
           <div className="rounded-lg border border-slate-200 bg-slate-50 p-6 text-center">
-            <h3 className="font-semibold text-slate-700">Partido não encontrado</h3>
+            <h1 className="font-semibold text-slate-700">Partido não encontrado</h1>
             <p className="mt-1 text-sm text-slate-500">Não existe partido com este ID na base atual da Câmara.</p>
           </div>
         )}
@@ -536,7 +513,7 @@ export function PartidoProfilePage() {
               />
 
               {statusLideranca === "loading" && <StatsSkeleton />}
-              {statusLideranca === "error" && <p className="text-sm text-slate-400">Não foi possível carregar a liderança.</p>}
+              {(statusLideranca === "error" || statusLideranca === "offline" || statusLideranca === "rate_limited") && <p className="text-sm text-slate-400">Não foi possível carregar a liderança.</p>}
               {statusLideranca === "success" && lideranca && (() => {
                 const mesma = lideranca.lider_camara && lideranca.presidente &&
                   lideranca.lider_camara.nome === lideranca.presidente.nome;
@@ -589,12 +566,12 @@ export function PartidoProfilePage() {
               />
 
               {statusVot === "loading" && <StatsSkeleton />}
-              {statusVot === "error" && <p className="text-sm text-slate-400">Não foi possível carregar as votações.</p>}
+              {(statusVot === "error" || statusVot === "offline" || statusVot === "rate_limited") && <p className="text-sm text-slate-400">Não foi possível carregar as votações.</p>}
               {statusVot === "success" && votStats && (
                 <div className="space-y-5">
                   {votStats.votacoes_merito_count > 0 ? (
                     <div>
-                      <DonutChart sim={votStats.total_sim} nao={votStats.total_nao} abstencao={votStats.total_abstencao} />
+                      <ColumnChart sim={votStats.total_sim} nao={votStats.total_nao} abstencao={votStats.total_abstencao} />
                       <p className="mt-2 text-[11px] leading-relaxed text-slate-400">
                         Baseado em {votStats.votacoes_merito_count} votaç{votStats.votacoes_merito_count === 1 ? "ão" : "ões"} de mérito nos últimos 6 meses
                         {votStats.votacoes_procedural_count > 0 && ` (mais ${votStats.votacoes_procedural_count} despacho${votStats.votacoes_procedural_count !== 1 ? "s" : ""}/procedural${votStats.votacoes_procedural_count !== 1 ? "is" : ""} excluído${votStats.votacoes_procedural_count !== 1 ? "s" : ""} do cálculo)`}
@@ -632,7 +609,7 @@ export function PartidoProfilePage() {
               />
 
               {statusGastos === "loading" && <StatsSkeleton />}
-              {statusGastos === "error" && <p className="text-sm text-slate-400">Não foi possível carregar os gastos.</p>}
+              {(statusGastos === "error" || statusGastos === "offline" || statusGastos === "rate_limited") && <p className="text-sm text-slate-400">Não foi possível carregar os gastos.</p>}
               {statusGastos === "success" && gastos && (
                 gastos.despesas_indisponivel ? (
                   <p className="text-sm text-slate-400">
@@ -676,6 +653,10 @@ export function PartidoProfilePage() {
                   </svg>
                   Carregando deputados...
                 </div>
+              )}
+
+              {(statusDep === "error" || statusDep === "offline" || statusDep === "rate_limited") && (
+                <p className="py-4 text-sm text-slate-400">Não foi possível carregar os deputados federais.</p>
               )}
 
               {statusDep === "success" && membros.length === 0 && (
