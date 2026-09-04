@@ -180,6 +180,11 @@ function Sidebar({ activities }: { activities: Activity[] }) {
   const procedural = votacoes.filter((a) => extractPropSigla(a.title, a.description) === null);
   const meritoAprovadas = merito.filter((a) => a.aprovacao === 1).length;
   const proceduralAprovadas = procedural.filter((a) => a.aprovacao === 1).length;
+  // Sem resultado (aprovacao null) não conta nem como aprovada nem como
+  // rejeitada — excluído do denominador do "% aprovadas" pra não diluir a
+  // taxa com itens que nunca tiveram chance de entrar no numerador.
+  const meritoComResultado = merito.filter((a) => a.aprovacao != null).length;
+  const proceduralComResultado = procedural.filter((a) => a.aprovacao != null).length;
 
   const orgaos: Record<string, number> = {};
   votacoes.forEach((a) => {
@@ -214,13 +219,15 @@ function Sidebar({ activities }: { activities: Activity[] }) {
               <div>
                 <div className="mb-1 flex items-center justify-between text-[10px] font-semibold uppercase tracking-wide text-slate-300">
                   <span>Votações de mérito ({merito.length})</span>
-                  <span className="text-green-600">{Math.round((meritoAprovadas / merito.length) * 100)}%</span>
+                  <span className="text-green-600">
+                    {meritoComResultado > 0 ? `${Math.round((meritoAprovadas / meritoComResultado) * 100)}%` : "sem resultado"}
+                  </span>
                 </div>
                 <div className="h-2 overflow-hidden rounded-full bg-slate-100">
                   <motion.div
                     className="h-full rounded-full bg-green-400"
                     initial={{ width: 0 }}
-                    animate={{ width: `${Math.round((meritoAprovadas / merito.length) * 100)}%` }}
+                    animate={{ width: `${meritoComResultado > 0 ? Math.round((meritoAprovadas / meritoComResultado) * 100) : 0}%` }}
                     transition={{ duration: 0.7, ease: "easeOut" }}
                   />
                 </div>
@@ -230,13 +237,15 @@ function Sidebar({ activities }: { activities: Activity[] }) {
               <div>
                 <div className="mb-1 flex items-center justify-between text-[10px] font-semibold uppercase tracking-wide text-slate-300">
                   <span>Despachos e procedurais ({procedural.length})</span>
-                  <span className="text-slate-500">{Math.round((proceduralAprovadas / procedural.length) * 100)}%</span>
+                  <span className="text-slate-500">
+                    {proceduralComResultado > 0 ? `${Math.round((proceduralAprovadas / proceduralComResultado) * 100)}%` : "sem resultado"}
+                  </span>
                 </div>
                 <div className="h-2 overflow-hidden rounded-full bg-slate-100">
                   <motion.div
                     className="h-full rounded-full bg-slate-400"
                     initial={{ width: 0 }}
-                    animate={{ width: `${Math.round((proceduralAprovadas / procedural.length) * 100)}%` }}
+                    animate={{ width: `${proceduralComResultado > 0 ? Math.round((proceduralAprovadas / proceduralComResultado) * 100) : 0}%` }}
                     transition={{ duration: 0.7, ease: "easeOut", delay: 0.1 }}
                   />
                 </div>
