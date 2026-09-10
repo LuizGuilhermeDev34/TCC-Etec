@@ -58,7 +58,7 @@ export const api = {
     partidoLideranca: (id: number) =>
       fetchJSON<PartidoLideranca>(`/camara/partidos/${id}/lideranca`),
     partidoVotacoesStats: (id: number) =>
-      fetchJSON<PartidoVotacoesStats>(`/camara/partidos/${id}/votacoes-stats`),
+      fetchJSON<PartidoVotacoesStats>(`/camara/partidos/${id}/votacoes-stats`,90_000,),
     partidoGastos: (id: number) =>
       fetchJSON<PartidoGastos>(`/camara/partidos/${id}/gastos`),
     proposicoes: (ano = 2024, tipo = "PL", itens = 20) =>
