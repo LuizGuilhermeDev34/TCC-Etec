@@ -803,45 +803,116 @@ async def get_partido_votacoes_stats(partido_id: int) -> Dict[str, Any]:
     partido = await get_partido_by_id(partido_id)
     if not partido:
         return {}
+
     sigla = partido["sigla"]
 
     from datetime import date, timedelta
+
     data_inicio = (date.today() - timedelta(days=180)).strftime("%Y-%m-%d")
 
-    # siglaOrgao não é suportado como filtro; busca ampla e filtra PLEN localmente.
-    # ordem/ordenarPor explícitos (confirmado ao vivo que já é o default hoje,
-    # mas sem garantia de que a Câmara não mude isso sem aviso — achado da
-    # auditoria de código, F-29).
-    payload = await _fetch_camara_json(
-        "/votacoes",
-        params={"dataInicio": data_inicio, "itens": 100, "ordem": "DESC", "ordenarPor": "dataHoraRegistro"},
-    )
-    votacoes_list = [v for v in payload.get("dados", []) if v.get("siglaOrgao") == "PLEN"][:20]
+    # A API da Câmara é paginada. Percorremos todas as páginas do período
+    # para não perder votações PLEN que estejam fora da primeira página.
+    votacoes_list: List[Dict[str, Any]] = []
+    pagina = 1
 
-    all_results: list = []
+    while True:
+        payload = await _fetch_camara_json(
+            "/votacoes",
+            params={
+                "dataInicio": data_inicio,
+                "itens": 100,
+                "pagina": pagina,
+                "ordem": "DESC",
+                "ordenarPor": "dataHoraRegistro",
+            },
+        )
+
+        dados = payload.get("dados", [])
+
+        if not dados:
+            break
+
+        votacoes_list.extend(
+            v
+            for v in dados
+            if v.get("siglaOrgao") == "PLEN"
+        )
+
+        links = payload.get("links", [])
+        tem_proxima = any(
+            link.get("rel") == "next"
+            for link in links
+        )
+
+        if not tem_proxima:
+            break
+
+        pagina += 1
+
+    # O placar textual da descrição é usado apenas como filtro de candidatas
+    # nominais. A classificação definitiva continua sendo feita depois que
+    # /votos confirma a existência de votos individuais.
+    votacoes_candidatas = [
+        v
+        for v in votacoes_list
+        if _VOTOS_SUFFIX_RE.search(v.get("descricao") or "")
+    ]
+
+    all_results: List[Any] = []
+
     async with httpx.AsyncClient(timeout=15.0) as client:
-        for i in range(0, len(votacoes_list), 5):
-            batch = votacoes_list[i : i + 5]
+        for i in range(0, len(votacoes_candidatas), 5):
+            batch = votacoes_candidatas[i:i + 5]
+
             batch_results = await asyncio.gather(
-                *[_fetch_votacao_party_stats(client, v, sigla) for v in batch],
+                *[
+                    _fetch_votacao_party_stats(
+                        client,
+                        votacao,
+                        sigla,
+                    )
+                    for votacao in batch
+                ],
                 return_exceptions=True,
             )
+
             all_results.extend(batch_results)
-            if i + 5 < len(votacoes_list):
+
+            if i + 5 < len(votacoes_candidatas):
                 await asyncio.sleep(0.3)
 
-    votacoes_detail = [r for r in all_results if isinstance(r, dict)]
-    # "% de aprovação" só faz sentido sobre votações de mérito — misturar
-    # despachos/requerimentos (quase sempre unânimes) infla o número e, com
-    # poucas votações de mérito no período, uma única delas decide o
-    # percentual inteiro (já vimos "100% de aprovação" vindo de 1 votação
-    # com 10 votos). Separar os dois grupos e expor o tamanho da amostra
-    # deixa isso auditável em vez de escondido atrás de um número só.
-    merito_detail = [v for v in votacoes_detail if v["merito"]]
-    procedural_detail = [v for v in votacoes_detail if not v["merito"]]
-    total_sim = sum(v["sim"] for v in merito_detail)
-    total_nao = sum(v["nao"] for v in merito_detail)
-    total_abstencao = sum(v["abstencao"] for v in merito_detail)
+    votacoes_detail = [
+        r
+        for r in all_results
+        if isinstance(r, dict)
+    ]
+
+    merito_detail = [
+        v
+        for v in votacoes_detail
+        if v["merito"]
+    ]
+
+    procedural_detail = [
+        v
+        for v in votacoes_detail
+        if not v["merito"]
+    ]
+
+    total_sim = sum(
+        v["sim"]
+        for v in merito_detail
+    )
+
+    total_nao = sum(
+        v["nao"]
+        for v in merito_detail
+    )
+
+    total_abstencao = sum(
+        v["abstencao"]
+        for v in merito_detail
+    )
 
     result: Dict[str, Any] = {
         "total_sim": total_sim,
@@ -849,11 +920,16 @@ async def get_partido_votacoes_stats(partido_id: int) -> Dict[str, Any]:
         "total_abstencao": total_abstencao,
         "votacoes_merito_count": len(merito_detail),
         "votacoes_procedural_count": len(procedural_detail),
-        "votacoes": sorted(votacoes_detail, key=lambda x: x["data"], reverse=True)[:10],
+        "votacoes": sorted(
+            votacoes_detail,
+            key=lambda x: x["data"],
+            reverse=True,
+        )[:10],
     }
-    # Only cache when we actually found data — empty results may be transient API failures
-    if len(votacoes_detail) > 0:
+
+    if votacoes_detail:
         _cache_live.set(cache_key, result)
+
     return result
 
 
