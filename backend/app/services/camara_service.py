@@ -1,5 +1,9 @@
 import asyncio
+import csv
+import io
 import re
+import zipfile
+from datetime import date
 from typing import Any, Dict, List, Optional
 
 import httpx
@@ -22,6 +26,7 @@ _cache_votacao_proposicao = SimpleCache(ttl_seconds=60 * 60 * 24 * 30)
 # não precisa do TTL padrão de 5 min do _cache genérico. TTL próprio evita
 # repetir a chamada de 513 deputados a cada poucos minutos por UF pedida.
 _cache_deputados = SimpleCache(ttl_seconds=60 * 60 * 6)
+_cache_ceap = SimpleCache(ttl_seconds=60 * 60 * 6)
 # Histórico de votos de 2023 é imutável e caro de montar (varre trimestres +
 # um /votos por votação de plenário) — TTL longo evita refazer o fan-out
 # inteiro a cada visita de perfil.
@@ -798,7 +803,8 @@ async def get_partido_votacoes_stats(partido_id: int) -> Dict[str, Any]:
     cache_key = f"partido_votacoes_stats:{partido_id}"
     cached = _cache_live.get(cache_key)
     if cached is not None:
-        return cached
+        return cachedget_partido
+        
 
     partido = await get_partido_by_id(partido_id)
     if not partido:
@@ -932,6 +938,59 @@ async def get_partido_votacoes_stats(partido_id: int) -> Dict[str, Any]:
 
     return result
 
+async def _load_ceap_by_deputado(ano: int) -> Dict[str, Dict[str, float]]:
+    cache_key = f"ceap_por_deputado:{ano}"
+
+    cached = _cache_ceap.get(cache_key)
+    if cached is not None:
+        return cached
+
+    url = f"https://www.camara.leg.br/cotas/Ano-{ano}.csv.zip"
+
+    async with httpx.AsyncClient(timeout=60.0, follow_redirects=True) as client:
+        response = await client.get(url)
+        response.raise_for_status()
+
+    def parse_csv() -> Dict[str, Dict[str, float]]:
+        resultado: Dict[str, Dict[str, float]] = {}
+
+        with zipfile.ZipFile(io.BytesIO(response.content)) as z:
+            with z.open("Ano-" + str(ano) + ".csv") as arquivo:
+                reader = csv.DictReader(
+                    (linha.decode("utf-8-sig") for linha in arquivo),
+                    delimiter=";",
+                )
+
+                for row in reader:
+                    ide_cadastro = (row.get("ideCadastro") or "").strip()
+
+                    if not ide_cadastro:
+                        continue
+
+                    categoria = (
+                        row.get("txtDescricao") or "Outros"
+                    ).strip() or "Outros"
+
+                    try:
+                        valor = float(row.get("vlrLiquido") or 0)
+                    except (TypeError, ValueError):
+                        continue
+
+                    if valor == 0:
+                        continue
+
+                    despesas = resultado.setdefault(ide_cadastro, {})
+                    despesas[categoria] = (
+                        despesas.get(categoria, 0.0) + valor
+                    )
+
+        return resultado
+
+    resultado = await asyncio.to_thread(parse_csv)
+
+    _cache_ceap.set(cache_key, resultado)
+
+    return resultado
 
 async def _fetch_dep_despesas_totals(
     client: httpx.AsyncClient,
@@ -959,51 +1018,70 @@ async def _fetch_dep_despesas_totals(
 
 async def get_partido_gastos(partido_id: int) -> Dict[str, Any]:
     cache_key = f"partido_gastos:{partido_id}"
+
     cached = _cache.get(cache_key)
     if cached is not None:
         return cached
 
     partido = await get_partido_by_id(partido_id)
+
     if not partido:
         return {}
+
     sigla = partido["sigla"]
 
     all_dep = await get_deputados()
-    membros = [d for d in all_dep if d.sigla_partido == sigla]
 
-    from datetime import date
-    ano_atual = date.today().year
+    membros = [
+        deputado
+        for deputado in all_dep
+        if deputado.sigla_partido == sigla
+    ]
 
-    # Try current year then previous — track which year has data
-    ano_dados = ano_atual
-    async with httpx.AsyncClient(timeout=20.0) as client:
-        results = await asyncio.gather(
-            *[_fetch_dep_despesas_totals(client, d.id, ano_atual) for d in membros[:60]],
-            return_exceptions=True,
-        )
+    membro_ids = {str(deputado.id) for deputado in membros}
+
+    ano_dados = 2025
+
+    try:
+        ceap = await _load_ceap_by_deputado(ano_dados)
+    except Exception:
+        ceap = None
+
+    if ceap is None:
+        result = {
+            "total": 0,
+            "categorias": [],
+            "ano": ano_dados,
+            "despesas_indisponivel": True,
+        }
+
+        _cache.set(cache_key, result)
+        return result
 
     categorias: Dict[str, float] = {}
-    for res in results:
-        if isinstance(res, dict):
-            for cat, val in res.items():
-                categorias[cat] = categorias.get(cat, 0) + val
 
-    if not categorias:
-        ano_dados = ano_atual - 1
-        async with httpx.AsyncClient(timeout=20.0) as client:
-            results = await asyncio.gather(
-                *[_fetch_dep_despesas_totals(client, d.id, ano_dados) for d in membros[:60]],
-                return_exceptions=True,
+    for membro_id in membro_ids:
+        despesas = ceap.get(membro_id)
+
+        if not despesas:
+            continue
+
+        for categoria, valor in despesas.items():
+            categorias[categoria] = (
+                categorias.get(categoria, 0.0) + valor
             )
-        for res in results:
-            if isinstance(res, dict):
-                for cat, val in res.items():
-                    categorias[cat] = categorias.get(cat, 0) + val
 
     total = sum(categorias.values())
+
     sorted_cats = sorted(
-        [{"categoria": k, "valor": v} for k, v in categorias.items()],
-        key=lambda x: x["valor"],
+        [
+            {
+                "categoria": categoria,
+                "valor": valor,
+            }
+            for categoria, valor in categorias.items()
+        ],
+        key=lambda item: item["valor"],
         reverse=True,
     )[:8]
 
@@ -1011,12 +1089,11 @@ async def get_partido_gastos(partido_id: int) -> Dict[str, Any]:
         "total": total,
         "categorias": sorted_cats,
         "ano": ano_dados,
-        # Mesmo sinal de comparar.py: a Câmara está devolvendo 200 com
-        # dados: [] pra despesas de todo mundo (verificado ao vivo) — "sem
-        # categorias" aqui é a fonte vazia, não a bancada gastando zero.
         "despesas_indisponivel": len(categorias) == 0,
     }
+
     _cache.set(cache_key, result)
+
     return result
 
 
