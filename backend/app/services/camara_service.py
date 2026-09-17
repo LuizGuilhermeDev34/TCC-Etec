@@ -3,7 +3,8 @@ import csv
 import io
 import re
 import zipfile
-from datetime import date
+import unicodedata
+from datetime import date, timedelta
 from typing import Any, Dict, List, Optional
 
 import httpx
@@ -27,6 +28,7 @@ _cache_votacao_proposicao = SimpleCache(ttl_seconds=60 * 60 * 24 * 30)
 # repetir a chamada de 513 deputados a cada poucos minutos por UF pedida.
 _cache_deputados = SimpleCache(ttl_seconds=60 * 60 * 6)
 _cache_ceap = SimpleCache(ttl_seconds=60 * 60 * 6)
+_cache_votacoes_arquivos = SimpleCache(ttl_seconds=60 * 60 * 6)
 # Histórico de votos de 2023 é imutável e caro de montar (varre trimestres +
 # um /votos por votação de plenário) — TTL longo evita refazer o fan-out
 # inteiro a cada visita de perfil.
@@ -121,6 +123,111 @@ _LOGO_FALLBACK: Dict[str, str] = {
     "PRD":          "https://upload.wikimedia.org/wikipedia/commons/b/ba/Partido_da_Renova%C3%A7%C3%A3o_Democr%C3%A1tica.jpg",
     "MISSÃO":       "https://upload.wikimedia.org/wikipedia/pt/thumb/4/47/MISS%C3%83O_logo.png/330px-MISS%C3%83O_logo.png",
 }
+
+async def _load_votacoes_arquivos(ano: int) -> Dict[str, Any]:
+    cache_key = f"votacoes_arquivos:{ano}"
+
+    cached = _cache_votacoes_arquivos.get(cache_key)
+    if cached is not None:
+        return cached
+
+    urls = {
+        "votacoes": (
+            f"https://dadosabertos.camara.leg.br/"
+            f"arquivos/votacoes/csv/votacoes-{ano}.csv"
+        ),
+        "votos": (
+            f"https://dadosabertos.camara.leg.br/"
+            f"arquivos/votacoesVotos/csv/votacoesVotos-{ano}.csv"
+        ),
+    }
+
+    async with httpx.AsyncClient(
+        timeout=120.0,
+        follow_redirects=True,
+    ) as client:
+        resposta_votacoes, resposta_votos = await asyncio.gather(
+            client.get(urls["votacoes"]),
+            client.get(urls["votos"]),
+        )
+
+    resposta_votacoes.raise_for_status()
+    resposta_votos.raise_for_status()
+
+    votacoes: Dict[str, Dict[str, Any]] = {}
+
+    with io.StringIO(
+        resposta_votacoes.content.decode("utf-8-sig")
+    ) as arquivo:
+        reader = csv.DictReader(
+            arquivo,
+            delimiter=";",
+        )
+
+        for row in reader:
+            if (row.get("siglaOrgao") or "").strip() != "PLEN":
+                continue
+
+            descricao = (row.get("descricao") or "").strip()
+
+            if not _VOTOS_SUFFIX_RE.search(descricao):
+                continue
+
+            votacao_id = (row.get("id") or "").strip()
+
+            if not votacao_id:
+                continue
+
+            votacoes[votacao_id] = {
+                "id": votacao_id,
+                "data": (row.get("data") or "").strip(),
+                "descricao": descricao,
+            }
+
+    ids_votacoes = set(votacoes)
+
+    votos: Dict[str, List[Dict[str, str]]] = {}
+
+    with io.StringIO(
+        resposta_votos.content.decode("utf-8-sig")
+    ) as arquivo:
+        reader = csv.DictReader(
+            arquivo,
+            delimiter=";",
+        )
+
+        for row in reader:
+            votacao_id = (row.get("idVotacao") or "").strip()
+
+            if votacao_id not in ids_votacoes:
+                continue
+
+            deputado_id = (row.get("deputado_id") or "").strip()
+
+            if not deputado_id:
+                continue
+
+            tipo_voto = (row.get("voto") or "").strip()
+
+            votos.setdefault(votacao_id, []).append(
+                {
+                    "deputado_id": deputado_id,
+                    "voto": tipo_voto,
+                }
+            )
+
+    resultado = {
+        "votacoes": votacoes,
+        "votos": votos,
+    }
+
+    _cache_votacoes_arquivos.set(
+        cache_key,
+        resultado,
+    )
+
+    return resultado
+
 
 
 async def _fetch_camara_json(path: str, params: Dict[str, Any] | None = None) -> Any:
@@ -802,122 +909,159 @@ async def _fetch_votacao_party_stats(
 async def get_partido_votacoes_stats(partido_id: int) -> Dict[str, Any]:
     cache_key = f"partido_votacoes_stats:{partido_id}"
     cached = _cache_live.get(cache_key)
+
     if cached is not None:
-        return cachedget_partido
-        
+        return cached
 
     partido = await get_partido_by_id(partido_id)
+
     if not partido:
         return {}
 
     sigla = partido["sigla"]
 
-    from datetime import date, timedelta
+    hoje = date.today()
+    data_inicio = hoje - timedelta(days=180)
 
-    data_inicio = (date.today() - timedelta(days=180)).strftime("%Y-%m-%d")
+    deputados = await get_deputados()
 
-    # A API da Câmara é paginada. Percorremos todas as páginas do período
-    # para não perder votações PLEN que estejam fora da primeira página.
-    votacoes_list: List[Dict[str, Any]] = []
-    pagina = 1
+    membro_ids = {
+        str(deputado.id)
+        for deputado in deputados
+        if deputado.sigla_partido == sigla
+    }
 
-    while True:
-        payload = await _fetch_camara_json(
-            "/votacoes",
-            params={
-                "dataInicio": data_inicio,
-                "itens": 100,
-                "pagina": pagina,
-                "ordem": "DESC",
-                "ordenarPor": "dataHoraRegistro",
-            },
-        )
+    if not membro_ids:
+        result: Dict[str, Any] = {
+            "total_sim": 0,
+            "total_nao": 0,
+            "total_abstencao": 0,
+            "votacoes_merito_count": 0,
+            "votacoes_procedural_count": 0,
+            "votacoes": [],
+        }
 
-        dados = payload.get("dados", [])
+        _cache_live.set(cache_key, result)
+        return result
 
-        if not dados:
-            break
+    anos = sorted({data_inicio.year, hoje.year})
 
-        votacoes_list.extend(
-            v
-            for v in dados
-            if v.get("siglaOrgao") == "PLEN"
-        )
+    dados_anuais = await asyncio.gather(
+        *[
+            _load_votacoes_arquivos(ano)
+            for ano in anos
+        ]
+    )
 
-        links = payload.get("links", [])
-        tem_proxima = any(
-            link.get("rel") == "next"
-            for link in links
-        )
+    votacoes: Dict[str, Dict[str, Any]] = {}
+    votos_por_votacao: Dict[str, List[Dict[str, Any]]] = {}
 
-        if not tem_proxima:
-            break
+    for dados in dados_anuais:
+        votacoes.update(dados["votacoes"])
 
-        pagina += 1
+        for votacao_id, votos in dados["votos"].items():
+            votos_por_votacao.setdefault(
+                votacao_id,
+                []
+            ).extend(votos)
 
-    # O placar textual da descrição é usado apenas como filtro de candidatas
-    # nominais. A classificação definitiva continua sendo feita depois que
-    # /votos confirma a existência de votos individuais.
-    votacoes_candidatas = [
-        v
-        for v in votacoes_list
-        if _VOTOS_SUFFIX_RE.search(v.get("descricao") or "")
-    ]
+    resultado: List[Dict[str, Any]] = []
 
-    all_results: List[Any] = []
+    for votacao_id, votacao in votacoes.items():
+        data_str = (votacao.get("data") or "")[:10]
 
-    async with httpx.AsyncClient(timeout=15.0) as client:
-        for i in range(0, len(votacoes_candidatas), 5):
-            batch = votacoes_candidatas[i:i + 5]
+        if not data_str:
+            continue
 
-            batch_results = await asyncio.gather(
-                *[
-                    _fetch_votacao_party_stats(
-                        client,
-                        votacao,
-                        sigla,
-                    )
-                    for votacao in batch
-                ],
-                return_exceptions=True,
+        try:
+            data_votacao = date.fromisoformat(data_str)
+        except ValueError:
+            continue
+
+        if data_votacao < data_inicio or data_votacao > hoje:
+            continue
+
+        contagem = {
+            "sim": 0,
+            "nao": 0,
+            "abstencao": 0,
+        }
+
+        teve_voto_da_bancada = False
+
+        for voto in votos_por_votacao.get(votacao_id, []):
+            deputado_id = str(
+                voto.get("deputado_id") or ""
             )
 
-            all_results.extend(batch_results)
+            if deputado_id not in membro_ids:
+                continue
 
-            if i + 5 < len(votacoes_candidatas):
-                await asyncio.sleep(0.3)
+            teve_voto_da_bancada = True
 
-    votacoes_detail = [
-        r
-        for r in all_results
-        if isinstance(r, dict)
-    ]
+            tipo = (voto.get("voto") or "").strip().upper()
+            tipo = "".join(
+                caractere
+                for caractere in unicodedata.normalize("NFD", tipo)
+                if unicodedata.category(caractere) != "Mn"
+            )
+
+            if tipo == "SIM":
+                contagem["sim"] += 1
+            elif tipo == "NAO":
+                contagem["nao"] += 1
+            else:
+                contagem["abstencao"] += 1
+
+        if not teve_voto_da_bancada:
+            continue
+
+        eh_merito = _eh_merito(
+            votacao.get("descricao") or "",
+            nominal_confirmado=True,
+        )
+
+        resultado.append({
+            "id": votacao_id,
+            "data": data_str,
+            "sim": contagem["sim"],
+            "nao": contagem["nao"],
+            "abstencao": contagem["abstencao"],
+            "merito": eh_merito,
+            "aprovacao": votacao.get("aprovacao"),
+            "descricao": votacao.get("descricao") or "",
+        })
 
     merito_detail = [
-        v
-        for v in votacoes_detail
-        if v["merito"]
+        votacao
+        for votacao in resultado
+        if votacao["merito"]
     ]
 
     procedural_detail = [
-        v
-        for v in votacoes_detail
-        if not v["merito"]
+        votacao
+        for votacao in resultado
+        if not votacao["merito"]
     ]
 
     total_sim = sum(
-        v["sim"]
-        for v in merito_detail
+        votacao["sim"]
+        for votacao in merito_detail
     )
 
     total_nao = sum(
-        v["nao"]
-        for v in merito_detail
+        votacao["nao"]
+        for votacao in merito_detail
     )
 
     total_abstencao = sum(
-        v["abstencao"]
-        for v in merito_detail
+        votacao["abstencao"]
+        for votacao in merito_detail
+    )
+
+    resultado.sort(
+        key=lambda votacao: votacao["data"],
+        reverse=True,
     )
 
     result: Dict[str, Any] = {
@@ -926,15 +1070,10 @@ async def get_partido_votacoes_stats(partido_id: int) -> Dict[str, Any]:
         "total_abstencao": total_abstencao,
         "votacoes_merito_count": len(merito_detail),
         "votacoes_procedural_count": len(procedural_detail),
-        "votacoes": sorted(
-            votacoes_detail,
-            key=lambda x: x["data"],
-            reverse=True,
-        )[:10],
+        "votacoes": resultado[:10],
     }
 
-    if votacoes_detail:
-        _cache_live.set(cache_key, result)
+    _cache_live.set(cache_key, result)
 
     return result
 
