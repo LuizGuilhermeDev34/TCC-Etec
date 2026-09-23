@@ -1131,32 +1131,10 @@ async def _load_ceap_by_deputado(ano: int) -> Dict[str, Dict[str, float]]:
 
     return resultado
 
-async def _fetch_dep_despesas_totals(
-    client: httpx.AsyncClient,
-    dep_id: int,
-    ano: int = 2025,
-) -> Dict[str, float]:
-    try:
-        resp = await client.get(
-            f"{_CAMARA_BASE}/deputados/{dep_id}/despesas",
-            params={"ano": ano, "itens": 100},
-            timeout=12.0,
-        )
-        if not resp.is_success:
-            return {}
-        cats: Dict[str, float] = {}
-        for d in resp.json().get("dados", []):
-            cat = d.get("tipoDespesa") or "Outros"
-            val = float(d.get("valorLiquido") or 0)
-            if val > 0:
-                cats[cat] = cats.get(cat, 0) + val
-        return cats
-    except Exception:
-        return {}
-
 
 async def get_partido_gastos(partido_id: int) -> Dict[str, Any]:
-    cache_key = f"partido_gastos:{partido_id}"
+    ano_dados = 2026
+    cache_key = f"partido_gastos:{partido_id}:{ano_dados}"
 
     cached = _cache.get(cache_key)
     if cached is not None:
@@ -1179,7 +1157,7 @@ async def get_partido_gastos(partido_id: int) -> Dict[str, Any]:
 
     membro_ids = {str(deputado.id) for deputado in membros}
 
-    ano_dados = 2025
+    ano_dados = 2026
 
     try:
         ceap = await _load_ceap_by_deputado(ano_dados)
