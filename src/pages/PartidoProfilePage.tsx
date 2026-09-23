@@ -62,7 +62,7 @@ function ColumnChart({ sim, nao, abstencao }: { sim: number; nao: number; absten
     { label: "Abstenção", count: abstencao, bg: "bg-slate-300", text: "text-slate-500", light: "bg-slate-50",  border: "border-slate-200" },
   ];
 
-  const taxaAprov = Math.round((sim / total) * 100);
+  const taxaSim = Math.round((sim / total) * 100);
 
   return (
     <div className="space-y-5">
@@ -106,7 +106,9 @@ function ColumnChart({ sim, nao, abstencao }: { sim: number; nao: number; absten
       {/* Linha de resumo */}
       <div className="flex items-center justify-between rounded-xl bg-slate-50 px-4 py-2.5 text-xs text-slate-500">
         <span><span className="font-bold text-slate-700">{total}</span> votos totais neste período</span>
-        <span className="font-semibold text-green-600">{taxaAprov}% de aprovação</span>
+        <span className="font-semibold text-green-600">
+          {taxaSim}% de votos "Sim"
+        </span>
       </div>
     </div>
   );
@@ -569,6 +571,14 @@ export function PartidoProfilePage() {
               {(statusVot === "error" || statusVot === "offline" || statusVot === "rate_limited") && <p className="text-sm text-slate-400">Não foi possível carregar as votações.</p>}
               {statusVot === "success" && votStats && (
                 <div className="space-y-5">
+                <div className="rounded-xl border border-blue-100 bg-blue-50 px-4 py-3 text-xs text-blue-700">
+                  <p className="font-semibold">ⓘ Como interpretar os votos</p>
+                  <p className="mt-1 leading-relaxed text-blue-600">
+                    Os números de Sim, Não e Abstenção representam apenas os votos registrados
+                    dos membros desta bancada. O selo “Aprovado” ou “Rejeitado” indica o
+                    resultado geral da votação, e não a posição da bancada.
+                  </p>
+                </div>
                   {votStats.votacoes_merito_count > 0 ? (
                     <div>
                       <ColumnChart sim={votStats.total_sim} nao={votStats.total_nao} abstencao={votStats.total_abstencao} />
