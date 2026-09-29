@@ -1,14 +1,235 @@
-"""
-Serviço para Deputados Estaduais.
-Fonte: dados estáticos da ALESP (mandato 2023-2027) — a ALESP não oferece API REST.
-Estrutura pronta para expansão a outros estados e vereadores.
-"""
+
 import asyncio
 import dataclasses
-from typing import List, Optional
+from dataclasses import dataclass
+from typing import Any, Dict, List, Optional
+
+import httpx
 
 from ..models.deputado_estadual import DeputadoEstadual
 from .wikipedia_service import get_summary
+
+
+# ---------------------------------------------------------------------------
+# FONTE DE DESPESAS DA ALESP
+# ---------------------------------------------------------------------------
+
+_ALESP_DESPESAS_URL = (
+    "https://www3.al.sp.gov.br/repositorio/"
+    "dados-abertos/output/json/despesas_gabinetes.json"
+)
+
+# Cache em memória para evitar baixar o JSON enorme a cada requisição.
+# 6 horas é suficiente porque os dados da ALESP são atualizados diariamente.
+_despesas_cache: Optional[List[Dict[str, Any]]] = None
+_despesas_cache_timestamp: float = 0.0
+_DESPESAS_CACHE_TTL = 60 * 60 * 6
+
+
+@dataclass
+class DeputadoEstadualDespesa:
+    """Representa uma despesa individual de deputado estadual."""
+
+    ano: int
+    mes: int
+    categoria_id: int
+    valor: float
+    matricula: int
+    deputado: str
+    tipo: str
+    fornecedor: str
+    cnpj: Optional[str] = None
+
+
+async def _load_despesas_alesp() -> List[Dict[str, Any]]:
+    """
+    Baixa e carrega as despesas de gabinete da ALESP.
+
+    O arquivo oficial contém registros de diversos deputados e anos.
+    O resultado é mantido em cache para evitar downloads repetidos.
+    """
+    global _despesas_cache, _despesas_cache_timestamp
+
+    import time
+
+    agora = time.time()
+
+    if (
+        _despesas_cache is not None
+        and agora - _despesas_cache_timestamp < _DESPESAS_CACHE_TTL
+    ):
+        return _despesas_cache
+
+    async with httpx.AsyncClient(timeout=60.0, follow_redirects=True) as client:
+        response = await client.get(_ALESP_DESPESAS_URL)
+        response.raise_for_status()
+        dados = response.json()
+
+    if not isinstance(dados, list):
+        raise ValueError("Formato inesperado nos dados de despesas da ALESP")
+
+    _despesas_cache = dados
+    _despesas_cache_timestamp = agora
+
+    return dados
+
+
+async def get_deputado_estadual_despesas(
+    deputado_id: int,
+    ano: int = 2026,
+) -> List[DeputadoEstadualDespesa]:
+    """
+    Retorna as despesas individuais de um deputado estadual.
+
+    O projeto utiliza IDs internos (1001, 1002, etc.), enquanto a ALESP
+    identifica seus deputados pela matrícula. Por isso, primeiro localizamos
+    o deputado no cadastro interno e depois usamos o nome para encontrar
+    a matrícula oficial correspondente na base de despesas.
+
+    Args:
+        deputado_id: ID interno do deputado no projeto.
+        ano: Ano das despesas desejado.
+
+    Returns:
+        Lista de despesas individuais do deputado.
+    """
+
+    dep = _INDEX.get(deputado_id)
+
+    if dep is None:
+        return []
+
+    dados = await _load_despesas_alesp()
+
+    nome_deputado = dep.nome.strip().casefold()
+
+    # Primeiro descobrimos a matrícula oficial da ALESP.
+    matriculas: set[int] = set()
+
+    for item in dados:
+        if not isinstance(item, dict):
+            continue
+
+        nome = str(item.get("deputado") or "").strip().casefold()
+
+        if nome == nome_deputado:
+            matricula = item.get("matricula")
+
+            try:
+                matriculas.add(int(matricula))
+            except (TypeError, ValueError):
+                continue
+
+    if not matriculas:
+        return []
+
+    # Agora filtramos somente:
+    # - o ano solicitado
+    # - a matrícula oficial do deputado
+    despesas: List[DeputadoEstadualDespesa] = []
+
+    # A fonte da ALESP apresenta alguns registros exatamente duplicados.
+    # Guardamos uma chave dos campos disponíveis para impedir que eles
+    # sejam somados duas ou mais vezes.
+    registros_vistos: set[tuple] = set()
+
+    for item in dados:
+        if not isinstance(item, dict):
+            continue
+
+        try:
+            item_ano = int(item.get("ano"))
+            matricula = int(item.get("matricula"))
+        except (TypeError, ValueError):
+            continue
+
+        if item_ano != ano:
+            continue
+
+        if matricula not in matriculas:
+            continue
+
+        try:
+            mes = int(item.get("mes") or 0)
+            categoria_id = int(item.get("id") or 0)
+            valor = float(item.get("valor") or 0)
+        except (TypeError, ValueError):
+            continue
+
+        cnpj = item.get("cnpj")
+        if cnpj is not None:
+            cnpj = str(cnpj).strip()
+
+        deputado = str(item.get("deputado") or dep.nome).strip()
+        tipo = str(item.get("tipo") or "").strip()
+        fornecedor = str(item.get("fornecedor") or "").strip()
+
+        # Chave para eliminar somente duplicações exatas da fonte.
+        chave = (
+            item_ano,
+            mes,
+            categoria_id,
+            matricula,
+            valor,
+            cnpj,
+            deputado,
+            tipo,
+            fornecedor,
+        )
+
+        if chave in registros_vistos:
+            continue
+
+        registros_vistos.add(chave)
+
+        despesas.append(
+            DeputadoEstadualDespesa(
+                ano=item_ano,
+                mes=mes,
+                categoria_id=categoria_id,
+                valor=valor,
+                matricula=matricula,
+                deputado=deputado,
+                tipo=tipo,
+                fornecedor=fornecedor,
+                cnpj=cnpj,
+            )
+        )
+
+    # Ordena da despesa mais recente para a mais antiga.
+    despesas.sort(
+        key=lambda d: (
+            d.ano,
+            d.mes,
+            d.valor,
+        ),
+        reverse=True,
+    )
+
+    return despesas
+
+
+async def get_deputado_estadual_gastos_total(
+    deputado_id: int,
+    ano: int = 2026,
+) -> float:
+    """Retorna somente o total gasto pelo deputado no ano informado."""
+
+    despesas = await get_deputado_estadual_despesas(
+        deputado_id=deputado_id,
+        ano=ano,
+    )
+
+    return sum(
+        despesa.valor
+        for despesa in despesas
+        if despesa.valor > 0
+    )
+
+
+# ---------------------------------------------------------------------------
+# DADOS DOS DEPUTADOS
+# ---------------------------------------------------------------------------
 
 # Wikipedia article title for each deputy (keyed by id).
 # Deputies without a known article are omitted — their url_foto stays None.
@@ -34,6 +255,7 @@ _WIKI_TITLE: dict[int, str] = {
     1019: "Luiz Fernando Teixeira",
     1020: "Ana Carolina Serra",
 }
+
 
 _SP_DEPUTADOS: List[DeputadoEstadual] = [
     DeputadoEstadual(
@@ -104,12 +326,12 @@ _SP_DEPUTADOS: List[DeputadoEstadual] = [
     DeputadoEstadual(
         id=1014, nome="Gil Diniz", partido="PL", uf="SP",
         url_pagina="https://www.al.sp.gov.br/deputado/?perfil=14",
-        biografia="Ex-policial e servidor público, deputado estadual pelo PL. Defensor das forças de segurança e das pautas conservadoras no parlamento estadual paulista.",
+        biografia="Ex-policial e servidor público, deputado estadual pelo PL. Defensor das forças de segurança e das pautas conservadoras no parlamento.",
     ),
     DeputadoEstadual(
         id=1015, nome="Frederico D'Avila", partido="PL", uf="SP",
         url_pagina="https://www.al.sp.gov.br/deputado/?perfil=15",
-        biografia="Veterinário e produtor rural, deputado estadual pelo PL. Alinhado às pautas do agronegócio e do conservadorismo, com forte base eleitoral no interior paulista.",
+        biografia="Veterinário e produtor rural, deputado estadual pelo PL. Alinhado às pautas do agronegócio e do conservadorismo, com forte base eleitoral no interior de São Paulo.",
     ),
     DeputadoEstadual(
         id=1016, nome="Jorge Wilson", partido="Republicanos", uf="SP",
@@ -138,32 +360,58 @@ _SP_DEPUTADOS: List[DeputadoEstadual] = [
     ),
 ]
 
-_INDEX: dict[int, DeputadoEstadual] = {d.id: d for d in _SP_DEPUTADOS}
+
+_INDEX: dict[int, DeputadoEstadual] = {
+    d.id: d for d in _SP_DEPUTADOS
+}
 
 
 async def _enrich(dep: DeputadoEstadual) -> DeputadoEstadual:
     """Adds url_foto from Wikipedia if not already set."""
     if dep.url_foto:
         return dep
+
     title = _WIKI_TITLE.get(dep.id)
+
     if not title:
         return dep
+
     summary = await get_summary(title)
+
     if summary and summary.get("thumbnail"):
-        return dataclasses.replace(dep, url_foto=summary["thumbnail"])
+        return dataclasses.replace(
+            dep,
+            url_foto=summary["thumbnail"],
+        )
+
     return dep
 
 
-async def get_deputados_estaduais(uf: str = "SP") -> List[DeputadoEstadual]:
+async def get_deputados_estaduais(
+    uf: str = "SP",
+) -> List[DeputadoEstadual]:
     uf = uf.upper()
+
     if uf != "SP":
         return []
-    enriched = await asyncio.gather(*(_enrich(d) for d in _SP_DEPUTADOS))
-    return sorted(enriched, key=lambda d: d.nome)
+
+    enriched = await asyncio.gather(
+        *(_enrich(d) for d in _SP_DEPUTADOS)
+    )
+
+    return sorted(
+        enriched,
+        key=lambda d: d.nome,
+    )
 
 
-async def get_deputado_estadual_by_id(deputado_id: int) -> Optional[DeputadoEstadual]:
+async def get_deputado_estadual_by_id(
+    deputado_id: int,
+) -> Optional[DeputadoEstadual]:
+
     dep = _INDEX.get(deputado_id)
+
     if dep is None:
         return None
+
     return await _enrich(dep)

@@ -14,3 +14,17 @@ class DeputadoEstadualOut(BaseModel):
     biografia: Optional[str] = None
 
     model_config = {"from_attributes": True}
+
+
+class DeputadoEstadualDespesaOut(BaseModel):
+    ano: int
+    mes: int
+    categoria_id: int
+    valor: float
+    matricula: int
+    deputado: str
+    tipo: str
+    fornecedor: str
+    cnpj: Optional[str] = None
+
+    model_config = {"from_attributes": True}

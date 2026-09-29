@@ -2,8 +2,17 @@ from typing import List
 
 from fastapi import APIRouter, HTTPException, Path, Query
 
-from ....schemas.deputado_estadual import DeputadoEstadualOut
-from ....services.estadual_service import get_deputado_estadual_by_id, get_deputados_estaduais
+from ....schemas.deputado_estadual import (
+    DeputadoEstadualOut,
+    DeputadoEstadualDespesaOut,
+)
+
+from ....services.estadual_service import (
+    get_deputado_estadual_by_id,
+    get_deputados_estaduais,
+    get_deputado_estadual_despesas,
+)
+
 
 router = APIRouter(prefix="/estaduais", tags=["estaduais"])
 
@@ -12,13 +21,60 @@ router = APIRouter(prefix="/estaduais", tags=["estaduais"])
 async def read_deputados_estaduais(
     uf: str = Query("SP", min_length=2, max_length=2),
 ) -> List[DeputadoEstadualOut]:
+
     deputados = await get_deputados_estaduais(uf=uf)
-    return [DeputadoEstadualOut.model_validate(d, from_attributes=True) for d in deputados]
+
+    return [
+        DeputadoEstadualOut.model_validate(d, from_attributes=True)
+        for d in deputados
+    ]
 
 
 @router.get("/deputados/{deputado_id}", response_model=DeputadoEstadualOut)
-async def read_deputado_estadual(deputado_id: int = Path(..., ge=1)) -> DeputadoEstadualOut:
+async def read_deputado_estadual(
+    deputado_id: int = Path(..., ge=1),
+) -> DeputadoEstadualOut:
+
     dep = await get_deputado_estadual_by_id(deputado_id)
+
     if dep is None:
-        raise HTTPException(status_code=404, detail="Deputado não encontrado")
-    return DeputadoEstadualOut.model_validate(dep, from_attributes=True)
+        raise HTTPException(
+            status_code=404,
+            detail="Deputado não encontrado",
+        )
+
+    return DeputadoEstadualOut.model_validate(
+        dep,
+        from_attributes=True,
+    )
+
+
+@router.get(
+    "/deputados/{deputado_id}/despesas",
+    response_model=List[DeputadoEstadualDespesaOut],
+)
+async def read_deputado_estadual_despesas(
+    deputado_id: int = Path(..., ge=1),
+    ano: int = Query(2026, ge=2020, le=2100),
+) -> List[DeputadoEstadualDespesaOut]:
+
+    dep = await get_deputado_estadual_by_id(deputado_id)
+
+    if dep is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Deputado não encontrado",
+        )
+
+    despesas = await get_deputado_estadual_despesas(
+        deputado_id=deputado_id,
+        ano=ano,
+    )
+
+    return [
+        DeputadoEstadualDespesaOut.model_validate(
+            d,
+            from_attributes=True,
+        )
+        for d in despesas
+    ]
