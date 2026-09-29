@@ -363,7 +363,7 @@ function DeputadoSelector({
                 animate={{ opacity: 1, height: "auto" }}
                 exit={{ opacity: 0, height: 0 }}
                 transition={{ duration: 0.18 }}
-                className="overflow-hidden border-t border-slate-100"
+                className=" overflow-visible border-t border-slate-100"
               >
                 {filtered.length === 0 ? (
                   <li className="px-4 py-4 text-center text-xs text-slate-400">
@@ -459,7 +459,7 @@ function MetricCard({
   const pctB = (valB / max) * 100;
 
   return (
-    <div className="overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-sm">
+    <div className="overflow-visible rounded-2xl border border-slate-100 bg-white shadow-sm">
       <div className="flex items-center gap-2 border-b border-slate-100 bg-slate-50 px-5 py-3">
         <span className="text-slate-400">{icon}</span>
 
@@ -513,7 +513,7 @@ function MetricCard({
             </div>
           </div>
 
-          <div className="flex h-5 w-full overflow-hidden rounded-full bg-slate-100">
+          <div className="flex h-5 w-full  overflow-visible rounded-full bg-slate-100">
             <motion.div
               className="h-full origin-right bg-gradient-to-r from-blue-400 to-blue-600"
               style={{ marginLeft: "auto" }}
@@ -587,7 +587,7 @@ function TipoRow({
           </span>
 
           <div className="flex w-full justify-end">
-            <div className="h-3.5 w-full overflow-hidden rounded-full bg-slate-200">
+            <div className="h-3.5 w-full  overflow-visible rounded-full bg-slate-200">
               <motion.div
                 className={`h-full rounded-full ${
                   !tie && winnerA
@@ -619,7 +619,7 @@ function TipoRow({
             {vB}
           </span>
 
-          <div className="h-3.5 w-full overflow-hidden rounded-full bg-slate-200">
+          <div className="h-3.5 w-full  overflow-visible rounded-full bg-slate-200">
             <motion.div
               className={`h-full rounded-full ${
                 !tie && !winnerA
@@ -752,7 +752,7 @@ function TipoBreakdown({
   );
 
   return (
-    <div className="overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-sm">
+    <div className=" overflow-visible rounded-2xl border border-slate-100 bg-white shadow-sm">
       <div className="flex items-center gap-2 border-b border-slate-100 bg-slate-50 px-5 py-3">
         <svg
           className="h-4 w-4 text-slate-400"
