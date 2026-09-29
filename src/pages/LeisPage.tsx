@@ -8,21 +8,18 @@ import { api, classifyApiError } from "../services/api";
 import { containerVariants, slideInLeft, cardHover } from "../animations";
 import { fmtDate } from "../utils/dateFormat";
 import { buildDataFim, buildDataInicio } from "../utils/monthRange";
-import { tipoColor } from "../utils/proposicaoTipo";
 import type { ApiStatus, Proposicao, Votacao } from "../types";
+import { GlossarioTooltip } from "../components/GlossarioTooltip";
+import { getGlossarioInfo } from "../utils/glossario";
 
 type Tab = "proposicoes" | "votacoes";
 
-// Teto de itens pedido à API por carregamento das votações. Um mês pode ter
-// bem mais que isso (dezembro/2025 tem 300+) — quando a resposta bate nesse
-// teto, o que está na tela é uma amostra dos mais recentes, não o total do
-// período, e a UI precisa deixar isso explícito em vez de apresentar o teto
-// como se fosse a contagem real.
+// Teto de itens pedido à API por carregamento das votações.
 const VOTACOES_ITENS = 100;
 
 const TIPOS: { value: string; label: string }[] = [
-  { value: "",    label: "Todos os tipos" },
-  { value: "PL",  label: "Projeto de Lei (PL)" },
+  { value: "", label: "Todos os tipos" },
+  { value: "PL", label: "Projeto de Lei (PL)" },
   { value: "PEC", label: "Emenda Constitucional (PEC)" },
   { value: "MPV", label: "Medida Provisória (MPV)" },
   { value: "PDL", label: "Decreto Legislativo (PDL)" },
@@ -33,73 +30,46 @@ const TIPOS: { value: string; label: string }[] = [
   { value: "INC", label: "Indicação (INC)" },
 ];
 
-// Tipos administrativos/processuais — não são propostas de lei, são pedidos
-// e trâmites internos. Escondidos por padrão (ver mostrarTramite) porque em
-// volume dominam qualquer lista ordenada por data mais recente sem
-// distinção nenhuma do conteúdo de mérito.
 const TRAMITE_TIPOS = new Set(["REQ", "RIC", "MSC", "INC"]);
-
-const GLOSSARIO: Record<string, { nome: string; descricao: string }> = {
-  PL:   { nome: "Projeto de Lei", descricao: "Proposta de criação ou alteração de lei ordinária. Apresentada por deputados, senadores ou pelo Executivo." },
-  PEC:  { nome: "Proposta de Emenda Constitucional", descricao: "Altera a Constituição Federal. Exige aprovação de 3/5 dos parlamentares em dois turnos de votação." },
-  MPV:  { nome: "Medida Provisória", descricao: "Lei temporária editada pelo Presidente da República com força imediata, válida por 60 dias (prorrogável por mais 60). Precisa ser aprovada pelo Congresso." },
-  PDL:  { nome: "Projeto de Decreto Legislativo", descricao: "Ato do Congresso que não precisa de sanção presidencial. Usado para aprovar tratados internacionais, sustar atos do Executivo, etc." },
-  PLP:  { nome: "Projeto de Lei Complementar", descricao: "Complementa a Constituição em temas específicos (tributário, financeiro, etc.). Exige maioria absoluta — mais da metade de todos os parlamentares." },
-  REQ:  { nome: "Requerimento", descricao: "Pedido formal feito por deputado ou partido. Pode ser pedido de urgência (para votar mais rápido), adiamento, convocação de ministro, pedido de informações, etc." },
-  PROC: { nome: "Processo Interno", descricao: "Documento administrativo de tramitação interna da Câmara — comunicados, indicações ou registros procedimentais que não têm força de lei." },
-  MSC:  { nome: "Mensagem do Executivo", descricao: "Comunicado oficial enviado pelo Presidente da República ao Congresso. Pode ser envio de projetos, informações ou vetos." },
-  INC:  { nome: "Indicação", descricao: "Sugestão dirigida ao Poder Executivo para que tome alguma providência. Não tem força de lei obrigatória." },
-  PLEN:    { nome: "Plenário", descricao: "Sessão com todos os deputados presentes. É a forma mais importante de votação — as decisões aqui têm peso máximo e geralmente são definitivas." },
-  CCJ:     { nome: "Comissão de Constituição e Justiça", descricao: "Comissão permanente que analisa se as proposições são constitucionais antes de irem ao plenário." },
-  CFT:     { nome: "Comissão de Finanças e Tributação", descricao: "Analisa o impacto financeiro e tributário das proposições antes de irem a votação." },
-  // ── Comissões permanentes da Câmara ──────────────────────────────────────
-  CLP:     { nome: "Comissão de Legislação Participativa", descricao: "Recebe e analisa sugestões de cidadãos, entidades e organizações da sociedade civil para criação de leis." },
-  CMULHER: { nome: "Comissão de Defesa dos Direitos da Mulher", descricao: "Comissão permanente dedicada a proposições relacionadas aos direitos e à proteção da mulher." },
-  CDHM:    { nome: "Comissão de Direitos Humanos e Minorias", descricao: "Analisa proposições relativas a direitos humanos, minorias étnicas, pessoas com deficiência e grupos vulneráveis." },
-  CAPADR:  { nome: "Comissão de Agricultura e Reforma Agrária", descricao: "Analisa proposições relacionadas à agricultura, pecuária, abastecimento e desenvolvimento rural." },
-  CMEIO:   { nome: "Comissão de Meio Ambiente", descricao: "Analisa proposições sobre meio ambiente, desenvolvimento sustentável e recursos naturais." },
-  CEC:     { nome: "Comissão de Educação", descricao: "Analisa proposições relacionadas à educação, cultura, desporto, ciência e tecnologia." },
-  CSPCCO:  { nome: "Comissão de Segurança Pública", descricao: "Analisa proposições sobre segurança pública, combate ao crime e sistema penitenciário." },
-  CSSF:    { nome: "Comissão de Seguridade Social e Família", descricao: "Analisa proposições sobre saúde, previdência social, assistência social e direitos da família." },
-  CTASP:   { nome: "Comissão de Trabalho e Serviço Público", descricao: "Analisa proposições sobre direitos trabalhistas, emprego, serviço público e previdência do servidor." },
-  CINDRA:  { nome: "Comissão de Integração Nacional", descricao: "Analisa proposições sobre desenvolvimento regional, infraestrutura e integração nacional." },
-  CN:      { nome: "Congresso Nacional", descricao: "Sessão conjunta da Câmara dos Deputados e do Senado Federal — usada para votar Medidas Provisórias e outras matérias que exigem as duas Casas reunidas." },
-  CME:     { nome: "Comissão de Minas e Energia", descricao: "Analisa proposições sobre mineração, energia elétrica, petróleo e recursos energéticos." },
-  SGM:     { nome: "Secretaria-Geral da Mesa", descricao: "Órgão administrativo da Câmara responsável pelo registro e tramitação oficial das sessões e votações." },
-  CCOM:    { nome: "Comissão de Comunicação", descricao: "Analisa proposições sobre rádio, TV, telecomunicações e meios de comunicação em geral." },
-};
-
 function fmtTime(date: Date) {
-  return date.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+  return date.toLocaleTimeString("pt-BR", {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
 }
 
 const MESES = [
-  "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
-  "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro",
+  "Janeiro",
+  "Fevereiro",
+  "Março",
+  "Abril",
+  "Maio",
+  "Junho",
+  "Julho",
+  "Agosto",
+  "Setembro",
+  "Outubro",
+  "Novembro",
+  "Dezembro",
 ];
 
 // ── Sigla tooltip ─────────────────────────────────────────────────────────────
 
-function SiglaTooltip({ sigla, className }: { sigla: string; className?: string }) {
-  const info = GLOSSARIO[sigla.toUpperCase()];
-  const cls = className ?? tipoColor(sigla);
+function SiglaTooltip({
+  sigla,
+  className,
+}: {
+  sigla: string;
+  className?: string;
+}) {
   return (
-    <div className="relative group/tip inline-block">
-      <span className={`cursor-default rounded border px-2 py-0.5 text-xs font-semibold ${cls}`}>
-        {sigla}
-        {info && <span className="ml-1 text-[9px] opacity-40">?</span>}
-      </span>
-      {info && (
-        <div className="pointer-events-none absolute bottom-full left-0 z-50 mb-2 w-64 rounded-lg border border-slate-100 bg-white p-3 shadow-xl opacity-0 group-hover/tip:opacity-100 transition-opacity duration-150">
-          <p className="text-xs font-bold text-slate-800">{sigla} — {info.nome}</p>
-          <p className="mt-1 text-[11px] text-slate-500 leading-relaxed">{info.descricao}</p>
-        </div>
-      )}
-    </div>
+    <GlossarioTooltip termo={sigla} className={className}>
+      {sigla}
+    </GlossarioTooltip>
   );
 }
 
-// Extrai a sigla do primeiro token de um proposicao_objeto ("REQ 7/2026 PLP10821" → "REQ")
+// Extrai a sigla do primeiro token de um proposicao_objeto
 function extractSigla(propObj: string): string {
   return propObj.split(/[\s/]/)[0].toUpperCase();
 }
@@ -110,31 +80,31 @@ function VotacaoCard({ v }: { v: Votacao }) {
   const [expanded, setExpanded] = useState(false);
   const approved = v.aprovacao === 1;
   const rejected = v.aprovacao === 0;
-  // A Câmara não registra resultado binário pra alguns objetos de votação
-  // (destaque, supressão de texto — ex: "Mantido o texto.") — aprovacao vem
-  // null nesses casos. Já tratamos isso como "Rejeitado" no backend, o que
-  // inventava um resultado que a Câmara nunca informou (~3-5% das votações
-  // reais). Terceiro estado neutro em vez de forçar aprovado/rejeitado.
-  const semResultado = v.aprovacao == null;
-  const propSigla = v.proposicao_objeto ? extractSigla(v.proposicao_objeto) : null;
-  const propInfo = propSigla ? GLOSSARIO[propSigla] : null;
 
-  // Descrições genéricas que não explicam o que foi votado
+  const semResultado = v.aprovacao == null;
+
+  const propSigla = v.proposicao_objeto
+    ? extractSigla(v.proposicao_objeto)
+    : null;
+
+  const propInfo = propSigla
+    ? getGlossarioInfo(propSigla)
+    : undefined;
+
   const desc = (v.descricao || "").trim();
-  // v.merito vem do backend (placar embutido na descrição bruta da Câmara) —
-  // mais confiável que testar o texto da descrição já limpa aqui no front.
   const isGeneric = !v.merito;
 
   const badgeCls = approved
     ? "border-green-300 bg-green-100 text-green-800"
     : rejected
-    ? "border-red-300 bg-red-100 text-red-800"
-    : "border-slate-300 bg-slate-100 text-slate-700";
+      ? "border-red-300 bg-red-100 text-red-800"
+      : "border-slate-300 bg-slate-100 text-slate-700";
+
   const orgaoCls = approved
     ? "border-green-200 bg-green-200 text-green-700"
     : rejected
-    ? "border-red-200 bg-red-200 text-red-700"
-    : "border-slate-200 bg-slate-200 text-slate-600";
+      ? "border-red-200 bg-red-200 text-red-700"
+      : "border-slate-200 bg-slate-200 text-slate-600";
 
   return (
     <motion.div
@@ -142,58 +112,70 @@ function VotacaoCard({ v }: { v: Votacao }) {
       role="button"
       tabIndex={0}
       onClick={() => setExpanded((e) => !e)}
-      onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setExpanded((v) => !v); } }}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          setExpanded((v) => !v);
+        }
+      }}
       className={`cursor-pointer rounded-xl border px-5 py-4 shadow-sm transition hover:shadow-md ${
-        approved ? "border-green-300 bg-green-50" : rejected ? "border-red-300 bg-red-50" : "border-slate-300 bg-slate-50"
+        approved
+          ? "border-green-300 bg-green-50"
+          : rejected
+            ? "border-red-300 bg-red-50"
+            : "border-slate-300 bg-slate-50"
       }`}
     >
       <div className="flex items-start justify-between gap-4">
         <div className="flex-1 min-w-0">
           <div className="mb-2 flex flex-wrap items-center gap-2">
-            {/* Proposição votada — com tooltip explicando a sigla */}
-            {v.proposicao_objeto && (
-              <div className="relative group/prop inline-flex items-center gap-1">
-                <span className={`rounded border px-2 py-0.5 text-xs font-semibold font-mono ${badgeCls}`}>
-                  {v.proposicao_objeto}
-                </span>
-                {propInfo && (
-                  <>
-                    <span className={`text-[10px] opacity-40 cursor-help ${approved ? "text-green-800" : rejected ? "text-red-800" : "text-slate-700"}`}>?</span>
-                    <div className="pointer-events-none absolute bottom-full left-0 z-50 mb-2 w-64 rounded-lg border border-slate-100 bg-white p-3 shadow-xl opacity-0 group-hover/prop:opacity-100 transition-opacity duration-150">
-                      <p className="text-xs font-bold text-slate-800">{propSigla} — {propInfo.nome}</p>
-                      <p className="mt-1 text-[11px] text-slate-500 leading-relaxed">{propInfo.descricao}</p>
-                    </div>
-                  </>
-                )}
-              </div>
+            {/* Proposição votada — com tooltip do glossário */}
+            {v.proposicao_objeto && propSigla && propInfo && (
+              <GlossarioTooltip
+                termo={propSigla}
+                className={`font-mono ${badgeCls}`}
+              >
+                {v.proposicao_objeto}
+              </GlossarioTooltip>
             )}
 
-            {/* Órgão (ex: PLEN) — com tooltip */}
-            <SiglaTooltip sigla={v.sigla_orgao} className={orgaoCls} />
+            {/* Órgão — com tooltip */}
+            <SiglaTooltip
+              sigla={v.sigla_orgao}
+              className={orgaoCls}
+            />
 
-            <span className="text-xs text-slate-500">{fmtDate(v.data)}</span>
+            <span className="text-xs text-slate-500">
+              {fmtDate(v.data)}
+            </span>
           </div>
 
-          {/* Ementa real da proposição — o que a lei de fato trata, não só o número dela */}
           {v.proposicao_ementa && (
             <p className="mb-1.5 text-xs text-slate-600 leading-relaxed line-clamp-2">
               {v.proposicao_ementa}
             </p>
           )}
 
-          <p className={`text-sm font-medium leading-relaxed ${approved ? "text-green-900" : rejected ? "text-red-900" : "text-slate-800"}`}>
+          <p
+            className={`text-sm font-medium leading-relaxed ${
+              approved
+                ? "text-green-900"
+                : rejected
+                  ? "text-red-900"
+                  : "text-slate-800"
+            }`}
+          >
             {desc || "Votação sem descrição"}
           </p>
 
-          {/* A Câmara não informou aprovado/rejeitado pra este item — explica
-              em vez de deixar o selo neutro sem contexto. */}
           {semResultado && (
             <p className="mt-2 text-[11px] text-slate-500 leading-relaxed border-t border-current border-opacity-10 pt-2">
-              A Câmara não registra um resultado de aprovação/rejeição para este tipo de item (destaque, supressão de texto) — a votação ocorreu, mas não decidiu o mérito da proposição principal.
+              A Câmara não registra um resultado de aprovação/rejeição para
+              este tipo de item (destaque, supressão de texto) — a votação
+              ocorreu, mas não decidiu o mérito da proposição principal.
             </p>
           )}
 
-          {/* Quando a descrição é vaga, mostra o que a sigla significa para dar contexto */}
           {isGeneric && propInfo && (
             <p className="mt-2 text-[11px] text-slate-500 leading-relaxed border-t border-current border-opacity-10 pt-2">
               <span className="font-semibold">{propInfo.nome}:</span>{" "}
@@ -203,19 +185,45 @@ function VotacaoCard({ v }: { v: Votacao }) {
         </div>
 
         <div className="flex flex-shrink-0 flex-col items-end gap-1.5">
-          <span className={`rounded-full px-3 py-1.5 text-xs font-bold text-white shadow-sm ${
-            approved ? "bg-green-500" : rejected ? "bg-red-500" : "bg-slate-400"
-          }`}>
-            {approved ? "✓ Aprovado" : rejected ? "✗ Rejeitado" : "◐ Sem resultado"}
+          <span
+            className={`rounded-full px-3 py-1.5 text-xs font-bold text-white shadow-sm ${
+              approved
+                ? "bg-green-500"
+                : rejected
+                  ? "bg-red-500"
+                  : "bg-slate-400"
+            }`}
+          >
+            {approved
+              ? "✓ Aprovado"
+              : rejected
+                ? "✗ Rejeitado"
+                : "◐ Sem resultado"}
           </span>
-          <svg className={`h-3.5 w-3.5 text-slate-400 transition-transform ${expanded ? "rotate-180" : ""}`}
-            fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5" />
+
+          <svg
+            className={`h-3.5 w-3.5 text-slate-400 transition-transform ${
+              expanded ? "rotate-180" : ""
+            }`}
+            fill="none"
+            viewBox="0 0 24 24"
+            strokeWidth={2.5}
+            stroke="currentColor"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              d="m19.5 8.25-7.5 7.5-7.5-7.5"
+            />
           </svg>
         </div>
       </div>
 
-      {expanded && <div onClick={(e) => e.stopPropagation()}><VotoPartidoPanel votacaoId={v.id} /></div>}
+      {expanded && (
+        <div onClick={(e) => e.stopPropagation()}>
+          <VotoPartidoPanel votacaoId={v.id} />
+        </div>
+      )}
     </motion.div>
   );
 }

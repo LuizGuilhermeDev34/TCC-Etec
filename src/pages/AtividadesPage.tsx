@@ -4,52 +4,34 @@ import { PageTransition } from "../components/PageTransition";
 import { LoadingSpinner } from "../components/LoadingSpinner";
 import { OfflineBanner } from "../components/OfflineBanner";
 import { VotoPartidoPanel } from "../components/VotoPartidoPanel";
+import { GlossarioTooltip } from "../components/GlossarioTooltip";
 import { api } from "../services/api";
 import { containerVariants, slideInLeft } from "../animations";
 import { fmtDate, fmtTime } from "../utils/dateFormat";
+import { getGlossarioInfo } from "../utils/glossario";
 import type { Activity, ApiStatus } from "../types";
 
 type Tab = "tudo" | "votacoes" | "proposicoes";
 
-const GLOSSARIO: Record<string, { nome: string; descricao: string }> = {
-  PL:      { nome: "Projeto de Lei",                   descricao: "Proposta de criação ou alteração de lei ordinária. Apresentada por deputados, senadores ou pelo Executivo." },
-  PEC:     { nome: "Emenda Constitucional",             descricao: "Altera a Constituição Federal. Exige aprovação de 3/5 dos parlamentares em dois turnos de votação." },
-  MPV:     { nome: "Medida Provisória",                 descricao: "Lei temporária editada pelo Presidente com força imediata, válida por 60 dias (prorrogável). Precisa ser aprovada pelo Congresso." },
-  MP:      { nome: "Medida Provisória",                 descricao: "Lei temporária editada pelo Presidente com força imediata, válida por 60 dias (prorrogável). Precisa ser aprovada pelo Congresso." },
-  PDL:     { nome: "Decreto Legislativo",               descricao: "Ato do Congresso que não precisa de sanção presidencial. Usado para aprovar tratados internacionais, sustar atos do Executivo, etc." },
-  PLP:     { nome: "Lei Complementar",                  descricao: "Complementa a Constituição em temas específicos. Exige maioria absoluta — mais da metade de todos os parlamentares." },
-  REQ:     { nome: "Requerimento",                      descricao: "Pedido formal feito por deputado ou partido — pode ser de urgência, adiamento, convocação de ministro, pedido de informações, etc." },
-  PROC:    { nome: "Processo Interno",                  descricao: "Documento administrativo de tramitação interna da Câmara — comunicados, indicações ou registros procedimentais que não têm força de lei." },
-  MSC:     { nome: "Mensagem do Executivo",             descricao: "Comunicado oficial enviado pelo Presidente da República ao Congresso. Pode ser envio de projetos, informações ou vetos." },
-  INC:     { nome: "Indicação",                         descricao: "Sugestão dirigida ao Poder Executivo para que tome alguma providência. Não tem força de lei obrigatória." },
-  PLEN:    { nome: "Plenário",                          descricao: "Sessão com todos os deputados presentes. Decisões aqui têm peso máximo e geralmente são definitivas." },
-  CCJ:     { nome: "Comissão de Constituição e Justiça", descricao: "Analisa se as proposições são constitucionais antes de irem ao plenário." },
-  CLP:     { nome: "Comissão de Legislação Participativa", descricao: "Recebe e analisa sugestões de cidadãos e organizações da sociedade civil para criação de leis." },
-  CFT:     { nome: "Comissão de Finanças e Tributação", descricao: "Analisa o impacto financeiro e tributário das proposições antes de irem a votação." },
-  CDHM:    { nome: "Comissão de Direitos Humanos",      descricao: "Analisa proposições relativas a direitos humanos, minorias étnicas e grupos vulneráveis." },
-  CSSF:    { nome: "Comissão de Seguridade Social e Família", descricao: "Analisa proposições sobre saúde, previdência social, assistência social e direitos da família." },
-  CTASP:   { nome: "Comissão de Trabalho",              descricao: "Analisa proposições sobre direitos trabalhistas, emprego e serviço público." },
-  CMULHER: { nome: "Comissão de Defesa dos Direitos da Mulher", descricao: "Comissão permanente dedicada a proposições relacionadas aos direitos e à proteção da mulher." },
-};
+function siglaInfo(s: string) {
+  return getGlossarioInfo(s) ?? null;
+}
 
-function siglaInfo(s: string) { return GLOSSARIO[s.toUpperCase()] ?? null; }
-function siglaLabel(s: string) { return GLOSSARIO[s.toUpperCase()]?.nome ?? s; }
+function siglaLabel(s: string) {
+  return getGlossarioInfo(s)?.nome ?? s;
+}
 
-function SiglaTooltip({ sigla, className }: { sigla: string; className?: string }) {
-  const info = siglaInfo(sigla);
+function SiglaTooltip({
+  sigla,
+  className,
+}: {
+  sigla: string;
+  className?: string;
+}) {
   return (
-    <div className="relative group/stip inline-block">
-      <span className={`cursor-default rounded border px-1.5 py-0.5 text-[10px] font-bold ${className ?? "border-blue-200 bg-blue-50 text-blue-700"}`}>
-        {sigla}
-        {info && <span className="ml-0.5 text-[8px] opacity-40">?</span>}
-      </span>
-      {info && (
-        <div className="pointer-events-none absolute bottom-full left-0 z-50 mb-1.5 w-56 rounded-lg border border-slate-100 bg-white p-3 shadow-xl opacity-0 group-hover/stip:opacity-100 transition-opacity duration-150">
-          <p className="text-xs font-bold text-slate-800">{sigla} — {info.nome}</p>
-          <p className="mt-1 text-[11px] text-slate-500 leading-relaxed">{info.descricao}</p>
-        </div>
-      )}
-    </div>
+    <GlossarioTooltip termo={sigla} className={className}>
+      {sigla}
+    </GlossarioTooltip>
   );
 }
 
@@ -113,7 +95,14 @@ function ActivityCard({ a }: { a: Activity }) {
               Nova proposição
             </span>
           )}
-          {isVot && propSigla && <SiglaTooltip sigla={propSigla} className="border-slate-300 bg-white text-slate-600" />}
+
+          {isVot && propSigla && (
+            <SiglaTooltip
+              sigla={propSigla}
+              className="border-slate-300 bg-white text-slate-600"
+            />
+          )}
+
           {isVot && !propSigla && (
             <div className="relative group/proc inline-block">
               <span className="cursor-default rounded border border-slate-200 bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold text-slate-400">
@@ -121,22 +110,33 @@ function ActivityCard({ a }: { a: Activity }) {
               </span>
               <div className="pointer-events-none absolute bottom-full left-0 z-50 mb-1.5 w-56 rounded-lg border border-slate-100 bg-white p-3 shadow-xl opacity-0 group-hover/proc:opacity-100 transition-opacity duration-150">
                 <p className="text-xs font-bold text-slate-800">Voto procedural</p>
-                <p className="mt-1 text-[11px] text-slate-500 leading-relaxed">Votação sobre uma etapa interna do processo legislativo — como manter um texto, rejeitar emendas ou encerrar discussão. Não está vinculada a um projeto de lei específico.</p>
+                <p className="mt-1 text-[11px] text-slate-500 leading-relaxed">
+                  Votação sobre uma etapa interna do processo legislativo — como
+                  manter um texto, rejeitar emendas ou encerrar discussão. Não
+                  está vinculada a um projeto de lei específico.
+                </p>
               </div>
             </div>
           )}
+
           <span className="text-[11px] text-slate-400">
             {isVot ? siglaLabel(a.actor) : "Câmara dos Deputados"}
           </span>
         </div>
+
         <div className="flex items-center gap-1 text-[11px] text-slate-400">
           <span>{date}</span>
-          {time && <><span className="opacity-40">·</span><span className="font-medium text-slate-500">{time}</span></>}
+          {time && (
+            <>
+              <span className="opacity-40">·</span>
+              <span className="font-medium text-slate-500">{time}</span>
+            </>
+          )}
         </div>
       </div>
 
       <p className={`font-semibold text-sm ${isVot ? (approved ? "text-green-900" : "text-red-900") : "text-slate-900"}`}>
-        {!isVot && GLOSSARIO[titleSigla] ? (
+        {!isVot && getGlossarioInfo(titleSigla) ? (
           <span className="inline-flex flex-wrap items-baseline gap-1.5">
             <SiglaTooltip sigla={titleSigla} />
             <span>{titleRest}</span>
@@ -145,6 +145,7 @@ function ActivityCard({ a }: { a: Activity }) {
           a.title
         )}
       </p>
+
       <p className={`mt-1 text-xs leading-relaxed line-clamp-2 ${isVot ? (approved ? "text-green-800" : "text-red-800") : "text-slate-500"}`}>
         {a.description || "Sem descrição disponível"}
       </p>
@@ -154,6 +155,7 @@ function ActivityCard({ a }: { a: Activity }) {
           {expanded ? "▲ ocultar voto por partido" : "▼ ver voto por partido"}
         </p>
       )}
+
       {expanded && a.votacao_id && (
         <div onClick={(e) => e.stopPropagation()}>
           <VotoPartidoPanel votacaoId={a.votacao_id} />
@@ -172,17 +174,11 @@ function Sidebar({ activities }: { activities: Activity[] }) {
   const rejeitadas = votacoes.filter((a) => a.aprovacao === 0).length;
   const total = votacoes.length;
 
-  // Votações "de mérito" (ligadas a uma proposição identificável, ex: PL, PEC)
-  // vs. despachos/procedurais (parecer, requerimento — sem sigla de proposição).
-  // Misturar as duas numa única taxa de aprovação é enganoso: despachos são
-  // aprovados quase sempre por serem trâmite administrativo, não decisão de mérito.
   const merito = votacoes.filter((a) => extractPropSigla(a.title, a.description) !== null);
   const procedural = votacoes.filter((a) => extractPropSigla(a.title, a.description) === null);
   const meritoAprovadas = merito.filter((a) => a.aprovacao === 1).length;
   const proceduralAprovadas = procedural.filter((a) => a.aprovacao === 1).length;
-  // Sem resultado (aprovacao null) não conta nem como aprovada nem como
-  // rejeitada — excluído do denominador do "% aprovadas" pra não diluir a
-  // taxa com itens que nunca tiveram chance de entrar no numerador.
+
   const meritoComResultado = merito.filter((a) => a.aprovacao != null).length;
   const proceduralComResultado = procedural.filter((a) => a.aprovacao != null).length;
 
@@ -190,23 +186,31 @@ function Sidebar({ activities }: { activities: Activity[] }) {
   votacoes.forEach((a) => {
     if (a.sigla_orgao) orgaos[a.sigla_orgao] = (orgaos[a.sigla_orgao] ?? 0) + 1;
   });
-  const topOrgaos = Object.entries(orgaos).sort((a, b) => b[1] - a[1]).slice(0, 5);
+
+  const topOrgaos = Object.entries(orgaos)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 5);
 
   return (
     <div className="space-y-4">
 
       {/* Resumo votações */}
       <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-        <p className="mb-3 text-xs font-bold uppercase tracking-wide text-slate-400">Resumo — últimos 30 dias</p>
+        <p className="mb-3 text-xs font-bold uppercase tracking-wide text-slate-400">
+          Resumo — últimos 30 dias
+        </p>
+
         <div className="grid grid-cols-3 gap-2 text-center mb-4">
           <div className="rounded-xl bg-slate-50 p-3">
             <p className="text-2xl font-bold text-slate-800">{total}</p>
             <p className="text-[10px] text-slate-400 mt-0.5">votações</p>
           </div>
+
           <div className="rounded-xl bg-green-50 p-3">
             <p className="text-2xl font-bold text-green-600">{aprovadas}</p>
             <p className="text-[10px] text-green-500 mt-0.5">aprovadas</p>
           </div>
+
           <div className="rounded-xl bg-red-50 p-3">
             <p className="text-2xl font-bold text-red-500">{rejeitadas}</p>
             <p className="text-[10px] text-red-400 mt-0.5">rejeitadas</p>
@@ -220,39 +224,58 @@ function Sidebar({ activities }: { activities: Activity[] }) {
                 <div className="mb-1 flex items-center justify-between text-[10px] font-semibold uppercase tracking-wide text-slate-300">
                   <span>Votações de mérito ({merito.length})</span>
                   <span className="text-green-600">
-                    {meritoComResultado > 0 ? `${Math.round((meritoAprovadas / meritoComResultado) * 100)}%` : "sem resultado"}
+                    {meritoComResultado > 0
+                      ? `${Math.round((meritoAprovadas / meritoComResultado) * 100)}%`
+                      : "sem resultado"}
                   </span>
                 </div>
+
                 <div className="h-2 overflow-hidden rounded-full bg-slate-100">
                   <motion.div
                     className="h-full rounded-full bg-green-400"
                     initial={{ width: 0 }}
-                    animate={{ width: `${meritoComResultado > 0 ? Math.round((meritoAprovadas / meritoComResultado) * 100) : 0}%` }}
+                    animate={{
+                      width: `${meritoComResultado > 0
+                        ? Math.round((meritoAprovadas / meritoComResultado) * 100)
+                        : 0}%`
+                    }}
                     transition={{ duration: 0.7, ease: "easeOut" }}
                   />
                 </div>
               </div>
             )}
+
             {procedural.length > 0 && (
               <div>
                 <div className="mb-1 flex items-center justify-between text-[10px] font-semibold uppercase tracking-wide text-slate-300">
                   <span>Despachos e procedurais ({procedural.length})</span>
                   <span className="text-slate-500">
-                    {proceduralComResultado > 0 ? `${Math.round((proceduralAprovadas / proceduralComResultado) * 100)}%` : "sem resultado"}
+                    {proceduralComResultado > 0
+                      ? `${Math.round((proceduralAprovadas / proceduralComResultado) * 100)}%`
+                      : "sem resultado"}
                   </span>
                 </div>
+
                 <div className="h-2 overflow-hidden rounded-full bg-slate-100">
                   <motion.div
                     className="h-full rounded-full bg-slate-400"
                     initial={{ width: 0 }}
-                    animate={{ width: `${proceduralComResultado > 0 ? Math.round((proceduralAprovadas / proceduralComResultado) * 100) : 0}%` }}
+                    animate={{
+                      width: `${proceduralComResultado > 0
+                        ? Math.round((proceduralAprovadas / proceduralComResultado) * 100)
+                        : 0}%`
+                    }}
                     transition={{ duration: 0.7, ease: "easeOut", delay: 0.1 }}
                   />
                 </div>
               </div>
             )}
+
             <p className="text-[10px] leading-relaxed text-slate-400">
-              Despachos e votos procedurais (parecer, requerimento) costumam ser aprovados quase sempre por serem trâmite administrativo — misturá-los às votações de mérito infla artificialmente a taxa de aprovação.
+              Despachos e votos procedurais (parecer, requerimento) costumam ser
+              aprovados quase sempre por serem trâmite administrativo —
+              misturá-los às votações de mérito infla artificialmente a taxa
+              de aprovação.
             </p>
           </div>
         )}
@@ -261,22 +284,31 @@ function Sidebar({ activities }: { activities: Activity[] }) {
       {/* Votações por órgão */}
       {topOrgaos.length > 0 && (
         <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-          <p className="mb-3 text-xs font-bold uppercase tracking-wide text-slate-400">Mais ativos</p>
+          <p className="mb-3 text-xs font-bold uppercase tracking-wide text-slate-400">
+            Mais ativos
+          </p>
+
           <div className="space-y-2">
             {topOrgaos.map(([orgao, count]) => (
               <div key={orgao}>
                 <div className="mb-1 flex items-center justify-between text-xs">
                   <div>
                     <span className="font-semibold text-slate-700">{orgao}</span>
-                    <span className="ml-1.5 text-[10px] text-slate-400">{siglaLabel(orgao)}</span>
+                    <span className="ml-1.5 text-[10px] text-slate-400">
+                      {siglaLabel(orgao)}
+                    </span>
                   </div>
+
                   <span className="font-bold text-slate-600">{count}</span>
                 </div>
+
                 <div className="h-1.5 overflow-hidden rounded-full bg-slate-100">
                   <motion.div
                     className="h-full rounded-full bg-blue-400"
                     initial={{ width: 0 }}
-                    animate={{ width: `${Math.round((count / topOrgaos[0][1]) * 100)}%` }}
+                    animate={{
+                      width: `${Math.round((count / topOrgaos[0][1]) * 100)}%`
+                    }}
                     transition={{ duration: 0.6, ease: "easeOut" }}
                   />
                 </div>
@@ -289,18 +321,27 @@ function Sidebar({ activities }: { activities: Activity[] }) {
       {/* Proposições recentes */}
       {proposicoes.length > 0 && (
         <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-          <p className="mb-3 text-xs font-bold uppercase tracking-wide text-slate-400">Proposições recentes</p>
+          <p className="mb-3 text-xs font-bold uppercase tracking-wide text-slate-400">
+            Proposições recentes
+          </p>
+
           <div className="space-y-3">
             {proposicoes.slice(0, 5).map((p, i) => {
               const sigla = p.title.split(/[\s/]/)[0].toUpperCase();
+
               return (
                 <div key={i} className="flex items-start gap-2">
                   <div className="mt-0.5 flex-shrink-0">
                     <SiglaTooltip sigla={sigla} />
                   </div>
+
                   <div className="min-w-0">
-                    <p className="text-xs font-semibold text-slate-700 truncate">{p.title}</p>
-                    <p className="text-[10px] text-slate-400 line-clamp-1">{p.description}</p>
+                    <p className="text-xs font-semibold text-slate-700 truncate">
+                      {p.title}
+                    </p>
+                    <p className="text-[10px] text-slate-400 line-clamp-1">
+                      {p.description}
+                    </p>
                   </div>
                 </div>
               );
@@ -321,18 +362,19 @@ export function AtividadesPage() {
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const [refreshing, setRefreshing] = useState(false);
 
-  // Um contador de requisição garante que só a resposta da chamada mais recente
-  // é aplicada, não importa se veio do efeito de montagem, do polling ou do botão
-  // "Atualizar" — mesmo padrão já usado em LeisPage para as votações.
   const reqId = useRef(0);
 
   function load(silent = false) {
     const id = ++reqId.current;
+
     if (!silent) setStatus("loading");
+
     setRefreshing(true);
+
     api.atividades.recentes()
       .then((d) => {
         if (id !== reqId.current) return;
+
         setActivities(d);
         setStatus("success");
         setLastUpdated(new Date());
@@ -340,6 +382,7 @@ export function AtividadesPage() {
       })
       .catch((e: Error) => {
         if (id !== reqId.current) return;
+
         setStatus(e.message === "offline" ? "offline" : "error");
         setRefreshing(false);
       });
@@ -347,7 +390,9 @@ export function AtividadesPage() {
 
   useEffect(() => {
     load();
+
     const timer = setInterval(() => load(true), 15 * 60 * 1000);
+
     return () => clearInterval(timer);
   }, []);
 
@@ -359,8 +404,16 @@ export function AtividadesPage() {
 
   const tabs: { key: Tab; label: string; count: number }[] = [
     { key: "tudo", label: "Tudo", count: activities.length },
-    { key: "votacoes", label: "Votações", count: activities.filter((a) => a.type === "votacao").length },
-    { key: "proposicoes", label: "Proposições", count: activities.filter((a) => a.type === "proposicao").length },
+    {
+      key: "votacoes",
+      label: "Votações",
+      count: activities.filter((a) => a.type === "votacao").length
+    },
+    {
+      key: "proposicoes",
+      label: "Proposições",
+      count: activities.filter((a) => a.type === "proposicao").length
+    },
   ];
 
   return (
@@ -368,28 +421,59 @@ export function AtividadesPage() {
       <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
 
         {/* Header */}
-        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.35 }}
-          className="mb-6 flex flex-wrap items-start justify-between gap-4">
+        <motion.div
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.35 }}
+          className="mb-6 flex flex-wrap items-start justify-between gap-4"
+        >
           <div>
-            <h1 className="text-2xl font-bold text-slate-900">Atividades recentes</h1>
+            <h1 className="text-2xl font-bold text-slate-900">
+              Atividades recentes
+            </h1>
+
             <p className="mt-1 text-sm text-slate-500">
-              Votações e proposições da <span className="font-medium text-blue-600">Câmara dos Deputados</span> em tempo real
+              Votações e proposições da{" "}
+              <span className="font-medium text-blue-600">
+                Câmara dos Deputados
+              </span>{" "}
+              em tempo real
             </p>
           </div>
+
           <div className="flex items-center gap-3">
             {lastUpdated && (
               <span className="flex items-center gap-1.5 text-xs text-slate-400">
-                <span className={`h-2 w-2 rounded-full ${refreshing ? "bg-amber-400 animate-pulse" : "bg-green-400 animate-pulse"}`} />
+                <span
+                  className={`h-2 w-2 rounded-full ${
+                    refreshing
+                      ? "bg-amber-400 animate-pulse"
+                      : "bg-green-400 animate-pulse"
+                  }`}
+                />
                 Atualizado às {fmtNow(lastUpdated)} · auto-refresh 15 min
               </span>
             )}
+
             <button
               onClick={() => load()}
               disabled={refreshing}
               className="flex items-center gap-1.5 rounded-lg border border-blue-200 bg-blue-50 px-3 py-1.5 text-xs font-medium text-blue-700 transition hover:bg-blue-100 disabled:opacity-60"
             >
-              <svg className={`h-3.5 w-3.5 ${refreshing ? "animate-spin" : ""}`} fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0 3.181 3.183a8.25 8.25 0 0 0 13.803-3.7M4.031 9.865a8.25 8.25 0 0 1 13.803-3.7l3.181 3.182m0-4.991v4.99" />
+              <svg
+                className={`h-3.5 w-3.5 ${
+                  refreshing ? "animate-spin" : ""
+                }`}
+                fill="none"
+                viewBox="0 0 24 24"
+                strokeWidth={2}
+                stroke="currentColor"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0 3.181 3.183a8.25 8.25 0 0 0 13.803-3.7M4.031 9.865a8.25 8.25 0 0 1 13.803-3.7l3.181 3.182m0-4.991v4.99"
+                />
               </svg>
               Atualizar
             </button>
@@ -409,10 +493,15 @@ export function AtividadesPage() {
               }`}
             >
               {t.label}
+
               {status === "success" && t.count > 0 && (
-                <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-bold ${
-                  tab === t.key ? "bg-blue-100 text-blue-600" : "bg-slate-100 text-slate-400"
-                }`}>
+                <span
+                  className={`rounded-full px-1.5 py-0.5 text-[10px] font-bold ${
+                    tab === t.key
+                      ? "bg-blue-100 text-blue-600"
+                      : "bg-slate-100 text-slate-400"
+                  }`}
+                >
                   {t.count}
                 </span>
               )}
@@ -420,7 +509,10 @@ export function AtividadesPage() {
           ))}
         </div>
 
-        {status === "loading" && <LoadingSpinner message="Carregando atividades..." count={5} />}
+        {status === "loading" && (
+          <LoadingSpinner message="Carregando atividades..." count={5} />
+        )}
+
         {(status === "offline" || status === "error") && (
           <OfflineBanner source="API da Câmara" onRetry={() => load()} />
         )}
@@ -440,8 +532,11 @@ export function AtividadesPage() {
                 >
                   <div className="space-y-4">
                     {filtered.length === 0 && (
-                      <p className="py-12 text-center text-sm text-slate-400">Nenhuma atividade nesta categoria.</p>
+                      <p className="py-12 text-center text-sm text-slate-400">
+                        Nenhuma atividade nesta categoria.
+                      </p>
                     )}
+
                     {filtered.map((a, i) => (
                       <motion.div key={i} variants={slideInLeft}>
                         <ActivityCard a={a} />

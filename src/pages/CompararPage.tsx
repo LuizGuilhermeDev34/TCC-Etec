@@ -1,8 +1,11 @@
+
 import React, { useEffect, useMemo, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Link } from "react-router-dom";
 import { PageTransition } from "../components/PageTransition";
 import { OfflineBanner } from "../components/OfflineBanner";
+import { GlossarioTooltip } from "../components/GlossarioTooltip";
+import { getGlossarioInfo } from "../utils/glossario";
 import { api, classifyApiError } from "../services/api";
 import { toLocalDate } from "../utils/dateFormat";
 import type { ApiStatus, CompararDeputado, CompararResult, Deputado } from "../types";
@@ -10,7 +13,11 @@ import type { ApiStatus, CompararDeputado, CompararResult, Deputado } from "../t
 // ── Helpers ────────────────────────────────────────────────────────────────────
 
 function fmtBRL(value: number) {
-  return value.toLocaleString("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 });
+  return value.toLocaleString("pt-BR", {
+    style: "currency",
+    currency: "BRL",
+    maximumFractionDigits: 0,
+  });
 }
 
 function calcIdade(dataNasc?: string | null) {
@@ -20,17 +27,9 @@ function calcIdade(dataNasc?: string | null) {
   return new Date().getFullYear() - d.getFullYear();
 }
 
-const TIPO_LABEL: Record<string, string> = {
-  PL: "Projeto de Lei",
-  PEC: "Emenda Constitucional",
-  PLP: "Lei Complementar",
-  REQ: "Requerimento",
-  INC: "Indicação",
-  MPV: "Medida Provisória",
-  PDL: "Decreto Legislativo",
-  MSC: "Mensagem",
-  PROC: "Protocolo",
-};
+function tipoLabel(tipo: string) {
+  return getGlossarioInfo(tipo)?.nome ?? tipo;
+}
 
 // ── Politician selector ────────────────────────────────────────────────────────
 
@@ -49,10 +48,14 @@ function DeputadoAvatar({
       src={dep.url_foto}
       alt={dep.nome}
       className={`${dim} rounded-full object-cover border-2 border-white shadow flex-shrink-0`}
-      onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
+      onError={(e) => {
+        (e.target as HTMLImageElement).style.display = "none";
+      }}
     />
   ) : (
-    <div className={`${dim} ${accentBg} rounded-full flex items-center justify-center font-bold text-white flex-shrink-0`}>
+    <div
+      className={`${dim} ${accentBg} rounded-full flex items-center justify-center font-bold text-white flex-shrink-0`}
+    >
       {dep.nome.charAt(0)}
     </div>
   );
@@ -82,20 +85,38 @@ function CustomSelect({
     function onOutside(e: MouseEvent) {
       if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
     }
+
     if (open) document.addEventListener("mousedown", onOutside);
+
     return () => document.removeEventListener("mousedown", onOutside);
   }, [open]);
 
   return (
-    <div ref={ref} className={`relative ${wide ? "flex-1 min-w-0" : "w-24 flex-shrink-0"}`}>
+    <div
+      ref={ref}
+      className={`relative ${wide ? "flex-1 min-w-0" : "w-24 flex-shrink-0"}`}
+    >
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
         className={`flex w-full items-center justify-between gap-1 rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1.5 text-xs font-semibold text-slate-700 focus:outline-none focus:ring-1 ${accentRing} transition`}
       >
         <span className="truncate">{value || placeholder}</span>
-        <svg className={`h-3 w-3 flex-shrink-0 text-slate-400 transition-transform ${open ? "rotate-180" : ""}`} fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor">
-          <path strokeLinecap="round" strokeLinejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5" />
+
+        <svg
+          className={`h-3 w-3 flex-shrink-0 text-slate-400 transition-transform ${
+            open ? "rotate-180" : ""
+          }`}
+          fill="none"
+          viewBox="0 0 24 24"
+          strokeWidth={2.5}
+          stroke="currentColor"
+        >
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            d="m19.5 8.25-7.5 7.5-7.5-7.5"
+          />
         </svg>
       </button>
 
@@ -112,20 +133,41 @@ function CustomSelect({
             <li>
               <button
                 type="button"
-                onMouseDown={() => { onChange(""); setOpen(false); }}
-                onClick={() => { onChange(""); setOpen(false); }}
-                className={`w-full px-3 py-2 text-left text-xs font-semibold ${!value ? "bg-slate-100 text-slate-800" : "text-slate-500 hover:bg-slate-50"} transition`}
+                onMouseDown={() => {
+                  onChange("");
+                  setOpen(false);
+                }}
+                onClick={() => {
+                  onChange("");
+                  setOpen(false);
+                }}
+                className={`w-full px-3 py-2 text-left text-xs font-semibold ${
+                  !value
+                    ? "bg-slate-100 text-slate-800"
+                    : "text-slate-500 hover:bg-slate-50"
+                } transition`}
               >
                 {placeholder}
               </button>
             </li>
+
             {options.map((opt) => (
               <li key={opt}>
                 <button
                   type="button"
-                  onMouseDown={() => { onChange(opt); setOpen(false); }}
-                  onClick={() => { onChange(opt); setOpen(false); }}
-                  className={`w-full px-3 py-2 text-left text-xs font-semibold transition ${opt === value ? "bg-blue-50 text-blue-700" : "text-slate-700 hover:bg-slate-50"}`}
+                  onMouseDown={() => {
+                    onChange(opt);
+                    setOpen(false);
+                  }}
+                  onClick={() => {
+                    onChange(opt);
+                    setOpen(false);
+                  }}
+                  className={`w-full px-3 py-2 text-left text-xs font-semibold transition ${
+                    opt === value
+                      ? "bg-blue-50 text-blue-700"
+                      : "text-slate-700 hover:bg-slate-50"
+                  }`}
                 >
                   {opt}
                 </button>
@@ -159,17 +201,22 @@ function DeputadoSelector({
   const [open, setOpen] = useState(false);
 
   const isA = side === "a";
-  const accent      = isA ? "text-blue-600"   : "text-violet-600";
-  const accentBg    = isA ? "bg-blue-500"     : "bg-violet-500";
+  const accent = isA ? "text-blue-600" : "text-violet-600";
+  const accentBg = isA ? "bg-blue-500" : "bg-violet-500";
   const accentBorder = isA ? "border-blue-300" : "border-violet-300";
-  const accentRing  = isA ? "focus:ring-blue-300 focus:border-blue-400" : "focus:ring-violet-300 focus:border-violet-400";
-  const accentCard  = isA ? "border-blue-200 bg-blue-50" : "border-violet-200 bg-violet-50";
-  const badgeCls    = isA ? "bg-blue-600"     : "bg-violet-600";
+  const accentRing = isA
+    ? "focus:ring-blue-300 focus:border-blue-400"
+    : "focus:ring-violet-300 focus:border-violet-400";
+  const accentCard = isA
+    ? "border-blue-200 bg-blue-50"
+    : "border-violet-200 bg-violet-50";
+  const badgeCls = isA ? "bg-blue-600" : "bg-violet-600";
 
   const partidos = useMemo(
     () => Array.from(new Set(all.map((d) => d.sigla_partido))).sort(),
     [all],
   );
+
   const ufs = useMemo(
     () => Array.from(new Set(all.map((d) => d.sigla_uf))).sort(),
     [all],
@@ -177,12 +224,15 @@ function DeputadoSelector({
 
   const filtered = useMemo(() => {
     let list = all;
+
     if (partido) list = list.filter((d) => d.sigla_partido === partido);
     if (uf) list = list.filter((d) => d.sigla_uf === uf);
+
     if (query.trim()) {
       const q = query.toLowerCase();
       list = list.filter((d) => d.nome.toLowerCase().includes(q));
     }
+
     return list.slice(0, 10);
   }, [all, query, partido, uf]);
 
@@ -196,72 +246,116 @@ function DeputadoSelector({
 
   return (
     <div className="flex-1 min-w-0">
-      <p className={`mb-2 text-xs font-bold uppercase tracking-widest ${accent}`}>{label}</p>
+      <p
+        className={`mb-2 text-xs font-bold uppercase tracking-widest ${accent}`}
+      >
+        {label}
+      </p>
 
       {selected ? (
-        /* ── Selected state ── */
-        <div className={`flex items-center gap-3 rounded-2xl border-2 p-4 shadow-sm ${accentCard}`}>
+        <div
+          className={`flex items-center gap-3 rounded-2xl border-2 p-4 shadow-sm ${accentCard}`}
+        >
           <DeputadoAvatar dep={selected} size="lg" accentBg={accentBg} />
+
           <div className="min-w-0 flex-1">
-            <p className="font-extrabold text-slate-900 truncate leading-tight">{selected.nome}</p>
+            <p className="font-extrabold text-slate-900 truncate leading-tight">
+              {selected.nome}
+            </p>
+
             <div className="mt-1 flex items-center gap-1.5">
-              <span className={`rounded-full px-2 py-0.5 text-[11px] font-bold text-white ${badgeCls}`}>
+              <span
+                className={`rounded-full px-2 py-0.5 text-[11px] font-bold text-white ${badgeCls}`}
+              >
                 {selected.sigla_partido}
               </span>
+
               <span className="rounded-full bg-slate-200 px-2 py-0.5 text-[11px] font-semibold text-slate-600">
                 {selected.sigla_uf}
               </span>
             </div>
           </div>
+
           <button
             onClick={() => onSelect(null)}
             className="ml-auto flex-shrink-0 rounded-full p-1.5 text-slate-400 hover:bg-white hover:text-red-500 transition"
             aria-label="Remover"
           >
-            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
+            <svg
+              className="h-4 w-4"
+              fill="none"
+              viewBox="0 0 24 24"
+              strokeWidth={2.5}
+              stroke="currentColor"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                d="M6 18 18 6M6 6l12 12"
+              />
             </svg>
           </button>
         </div>
       ) : (
-        /* ── Search state ── */
-        <div className={`rounded-2xl border-2 bg-white shadow-sm ${accentBorder}`}>
-          {/* Filter row */}
+        <div
+          className={`rounded-2xl border-2 bg-white shadow-sm ${accentBorder}`}
+        >
           <div className="flex items-center gap-2 border-b border-slate-100 px-3 py-2">
             <CustomSelect
               value={partido}
-              onChange={(v) => { setPartido(v); setOpen(true); }}
+              onChange={(v) => {
+                setPartido(v);
+                setOpen(true);
+              }}
               options={partidos}
               placeholder="Todos os partidos"
               accentRing={accentRing}
               wide
             />
+
             <CustomSelect
               value={uf}
-              onChange={(v) => { setUf(v); setOpen(true); }}
+              onChange={(v) => {
+                setUf(v);
+                setOpen(true);
+              }}
               options={ufs}
               placeholder="Todos UF"
               accentRing={accentRing}
             />
           </div>
 
-          {/* Name search */}
           <div className="relative px-3 py-2">
-            <svg className="pointer-events-none absolute left-5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z" />
+            <svg
+              className="pointer-events-none absolute left-5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400"
+              fill="none"
+              viewBox="0 0 24 24"
+              strokeWidth={2}
+              stroke="currentColor"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z"
+              />
             </svg>
+
             <input
               type="text"
-              placeholder={loadingAll ? "Carregando deputados…" : "Buscar por nome…"}
+              placeholder={
+                loadingAll ? "Carregando deputados…" : "Buscar por nome…"
+              }
               value={query}
-              onChange={(e) => { setQuery(e.target.value); setOpen(true); }}
+              onChange={(e) => {
+                setQuery(e.target.value);
+                setOpen(true);
+              }}
               onFocus={() => setOpen(true)}
               onBlur={() => setTimeout(() => setOpen(false), 160)}
               className={`w-full rounded-lg border border-slate-200 bg-slate-50 py-1.5 pl-7 pr-3 text-sm text-slate-700 placeholder-slate-400 focus:outline-none focus:ring-1 ${accentRing}`}
             />
           </div>
 
-          {/* Dropdown results */}
           <AnimatePresence>
             {showList && (
               <motion.ul
@@ -273,29 +367,58 @@ function DeputadoSelector({
               >
                 {filtered.length === 0 ? (
                   <li className="px-4 py-4 text-center text-xs text-slate-400">
-                    {loadingAll ? "Carregando lista de deputados…" : "Nenhum resultado encontrado"}
+                    {loadingAll
+                      ? "Carregando lista de deputados…"
+                      : "Nenhum resultado encontrado"}
                   </li>
                 ) : (
                   filtered.map((d) => (
-                    <li key={d.id} className="border-b border-slate-50 last:border-0">
+                    <li
+                      key={d.id}
+                      className="border-b border-slate-50 last:border-0"
+                    >
                       <button
                         type="button"
                         onMouseDown={() => pick(d)}
                         onClick={() => pick(d)}
                         className="flex w-full items-center gap-3 px-4 py-2.5 text-left hover:bg-slate-50 transition"
                       >
-                        <DeputadoAvatar dep={d} size="sm" accentBg={accentBg} />
+                        <DeputadoAvatar
+                          dep={d}
+                          size="sm"
+                          accentBg={accentBg}
+                        />
+
                         <div className="min-w-0 flex-1">
-                          <p className="text-sm font-semibold text-slate-800 truncate">{d.nome}</p>
+                          <p className="text-sm font-semibold text-slate-800 truncate">
+                            {d.nome}
+                          </p>
+
                           <div className="mt-0.5 flex items-center gap-1.5">
-                            <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-bold text-white ${badgeCls}`}>
+                            <span
+                              className={`rounded-full px-1.5 py-0.5 text-[10px] font-bold text-white ${badgeCls}`}
+                            >
                               {d.sigla_partido}
                             </span>
-                            <span className="text-[10px] font-medium text-slate-400">{d.sigla_uf}</span>
+
+                            <span className="text-[10px] font-medium text-slate-400">
+                              {d.sigla_uf}
+                            </span>
                           </div>
                         </div>
-                        <svg className={`h-3.5 w-3.5 flex-shrink-0 ${accent} opacity-50`} fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" d="m8.25 4.5 7.5 7.5-7.5 7.5" />
+
+                        <svg
+                          className={`h-3.5 w-3.5 flex-shrink-0 ${accent} opacity-50`}
+                          fill="none"
+                          viewBox="0 0 24 24"
+                          strokeWidth={2.5}
+                          stroke="currentColor"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            d="m8.25 4.5 7.5 7.5-7.5 7.5"
+                          />
                         </svg>
                       </button>
                     </li>
@@ -329,8 +452,6 @@ function MetricCard({
   fmt: (n: number) => string;
   nameA: string;
   nameB: string;
-  /** Dado indisponível na fonte (ex: despesas CEAP retornando vazio pra
-      todo mundo) — mostra estado honesto em vez de "0 vs 0" comparável. */
   indisponivel?: boolean;
 }) {
   const max = Math.max(valA, valB, 1);
@@ -339,24 +460,40 @@ function MetricCard({
 
   return (
     <div className="overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-sm">
-      {/* Header */}
       <div className="flex items-center gap-2 border-b border-slate-100 bg-slate-50 px-5 py-3">
         <span className="text-slate-400">{icon}</span>
-        <span className="text-xs font-bold uppercase tracking-widest text-slate-500">{label}</span>
+
+        <span className="text-xs font-bold uppercase tracking-widest text-slate-500">
+          {label === "Patrimônio (TSE 2022)" ? (
+            <GlossarioTooltip termo="PATRIMONIO_DECLARADO">
+              Patrimônio (TSE 2022)
+            </GlossarioTooltip>
+          ) : label === "Gastos CEAP" ? (
+            <GlossarioTooltip termo="GASTO_CEAP">
+              Gastos CEAP
+            </GlossarioTooltip>
+          ) : (
+            label
+          )}
+        </span>
       </div>
 
       {indisponivel ? (
         <div className="p-5 text-center text-xs text-slate-400">
-          Dado indisponível no momento — a fonte oficial não retornou registros para nenhum dos dois.
+          Dado indisponível no momento — a fonte oficial não retornou registros
+          para nenhum dos dois.
         </div>
       ) : (
         <div className="p-5">
-          {/* Values — lado a lado, sem veredito de "melhor" (mais proposições,
-              mais patrimônio ou menos gasto não é um juízo que o site faz). */}
           <div className="mb-4 grid grid-cols-[1fr_auto_1fr] items-center gap-4">
             <div className="flex flex-col items-end gap-1">
-              <span className="text-[11px] font-semibold text-blue-400 truncate max-w-full">{nameA}</span>
-              <span className="text-2xl font-extrabold leading-none text-blue-600">{fmt(valA)}</span>
+              <span className="text-[11px] font-semibold text-blue-400 truncate max-w-full">
+                {nameA}
+              </span>
+
+              <span className="text-2xl font-extrabold leading-none text-blue-600">
+                {fmt(valA)}
+              </span>
             </div>
 
             <div className="flex flex-col items-center gap-1">
@@ -366,12 +503,16 @@ function MetricCard({
             </div>
 
             <div className="flex flex-col items-start gap-1">
-              <span className="text-[11px] font-semibold text-violet-400 truncate max-w-full">{nameB}</span>
-              <span className="text-2xl font-extrabold leading-none text-violet-600">{fmt(valB)}</span>
+              <span className="text-[11px] font-semibold text-violet-400 truncate max-w-full">
+                {nameB}
+              </span>
+
+              <span className="text-2xl font-extrabold leading-none text-violet-600">
+                {fmt(valB)}
+              </span>
             </div>
           </div>
 
-          {/* Back-to-back bars — proporção visual, não ranking */}
           <div className="flex h-5 w-full overflow-hidden rounded-full bg-slate-100">
             <motion.div
               className="h-full origin-right bg-gradient-to-r from-blue-400 to-blue-600"
@@ -380,7 +521,9 @@ function MetricCard({
               animate={{ width: `${pctA / 2}%` }}
               transition={{ duration: 0.9, ease: "easeOut" }}
             />
+
             <div className="w-0.5 flex-shrink-0 bg-white" />
+
             <motion.div
               className="h-full origin-left bg-gradient-to-r from-violet-400 to-violet-600"
               initial={{ width: 0 }}
@@ -416,19 +559,41 @@ function TipoRow({
   return (
     <div className="rounded-xl border border-slate-100 bg-slate-50 p-3">
       <div className="mb-2 flex items-center justify-between">
-        <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wide">{label}</span>
-        <span className="rounded bg-slate-200 px-1.5 py-0.5 text-[10px] font-bold text-slate-500">{tipo}</span>
+        <GlossarioTooltip termo={tipo}>
+          <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wide">
+            {label}
+          </span>
+        </GlossarioTooltip>
+
+        <GlossarioTooltip termo={tipo}>
+          <span className="rounded bg-slate-200 px-1.5 py-0.5 text-[10px] font-bold text-slate-500">
+            {tipo}
+          </span>
+        </GlossarioTooltip>
       </div>
+
       <div className="grid grid-cols-[1fr_1rem_1fr] items-center gap-2">
-        {/* A side — right-aligned bar */}
         <div className="flex flex-col items-end gap-1">
-          <span className={`text-base font-extrabold leading-none ${!tie && winnerA ? "text-blue-600" : vA === 0 ? "text-slate-300" : "text-slate-500"}`}>
+          <span
+            className={`text-base font-extrabold leading-none ${
+              !tie && winnerA
+                ? "text-blue-600"
+                : vA === 0
+                  ? "text-slate-300"
+                  : "text-slate-500"
+            }`}
+          >
             {vA}
           </span>
+
           <div className="flex w-full justify-end">
             <div className="h-3.5 w-full overflow-hidden rounded-full bg-slate-200">
               <motion.div
-                className={`h-full rounded-full ${!tie && winnerA ? "bg-gradient-to-r from-blue-400 to-blue-600" : "bg-blue-200"}`}
+                className={`h-full rounded-full ${
+                  !tie && winnerA
+                    ? "bg-gradient-to-r from-blue-400 to-blue-600"
+                    : "bg-blue-200"
+                }`}
                 initial={{ width: 0 }}
                 animate={{ width: `${pctA}%` }}
                 transition={{ duration: 0.7, ease: "easeOut" }}
@@ -437,16 +602,30 @@ function TipoRow({
           </div>
         </div>
 
-        <div className="text-center text-[9px] font-black text-slate-300">VS</div>
+        <div className="text-center text-[9px] font-black text-slate-300">
+          VS
+        </div>
 
-        {/* B side */}
         <div className="flex flex-col items-start gap-1">
-          <span className={`text-base font-extrabold leading-none ${!tie && !winnerA ? "text-violet-600" : vB === 0 ? "text-slate-300" : "text-slate-500"}`}>
+          <span
+            className={`text-base font-extrabold leading-none ${
+              !tie && !winnerA
+                ? "text-violet-600"
+                : vB === 0
+                  ? "text-slate-300"
+                  : "text-slate-500"
+            }`}
+          >
             {vB}
           </span>
+
           <div className="h-3.5 w-full overflow-hidden rounded-full bg-slate-200">
             <motion.div
-              className={`h-full rounded-full ${!tie && !winnerA ? "bg-gradient-to-r from-violet-400 to-violet-600" : "bg-violet-200"}`}
+              className={`h-full rounded-full ${
+                !tie && !winnerA
+                  ? "bg-gradient-to-r from-violet-400 to-violet-600"
+                  : "bg-violet-200"
+              }`}
               initial={{ width: 0 }}
               animate={{ width: `${pctB}%` }}
               transition={{ duration: 0.7, ease: "easeOut" }}
@@ -468,38 +647,58 @@ function ProfileCard({
   color: "blue" | "violet";
 }) {
   const idade = calcIdade(dep.data_nascimento);
-  const borderCls = color === "blue" ? "border-blue-400 bg-blue-50" : "border-violet-400 bg-violet-50";
+  const borderCls =
+    color === "blue"
+      ? "border-blue-400 bg-blue-50"
+      : "border-violet-400 bg-violet-50";
+
   const badgeCls = color === "blue" ? "bg-blue-600" : "bg-violet-600";
   const linkTo = `/politicos/deputado/${dep.id}`;
 
   return (
-    <div className={`flex flex-col items-center gap-3 rounded-2xl border-2 p-6 text-center ${borderCls}`}>
+    <div
+      className={`flex flex-col items-center gap-3 rounded-2xl border-2 p-6 text-center ${borderCls}`}
+    >
       {dep.url_foto ? (
         <img
           src={dep.url_foto}
           alt={dep.nome}
           className="h-24 w-24 rounded-full border-4 border-white object-cover shadow-lg"
-          onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
+          onError={(e) => {
+            (e.target as HTMLImageElement).style.display = "none";
+          }}
         />
       ) : (
-        <div className={`h-24 w-24 rounded-full flex items-center justify-center text-3xl font-extrabold text-white shadow-lg ${badgeCls}`}>
+        <div
+          className={`h-24 w-24 rounded-full flex items-center justify-center text-3xl font-extrabold text-white shadow-lg ${badgeCls}`}
+        >
           {dep.nome.charAt(0)}
         </div>
       )}
 
       <div>
-        <h2 className="text-base font-extrabold text-slate-900 leading-tight">{dep.nome}</h2>
+        <h2 className="text-base font-extrabold text-slate-900 leading-tight">
+          {dep.nome}
+        </h2>
+
         <div className="mt-1 flex flex-wrap justify-center gap-1.5">
-          <span className={`rounded-full px-2.5 py-0.5 text-[11px] font-bold text-white ${badgeCls}`}>
+          <span
+            className={`rounded-full px-2.5 py-0.5 text-[11px] font-bold text-white ${badgeCls}`}
+          >
             {dep.sigla_partido}
           </span>
+
           <span className="rounded-full bg-slate-200 px-2.5 py-0.5 text-[11px] font-bold text-slate-600">
             {dep.sigla_uf}
           </span>
         </div>
+
         {dep.escolaridade && (
-          <p className="mt-1.5 text-[11px] text-slate-500">{dep.escolaridade}</p>
+          <p className="mt-1.5 text-[11px] text-slate-500">
+            {dep.escolaridade}
+          </p>
         )}
+
         {idade && (
           <p className="text-[11px] text-slate-400">{idade} anos</p>
         )}
@@ -517,47 +716,83 @@ function ProfileCard({
 
 // ── Tipo breakdown ─────────────────────────────────────────────────────────────
 
-function TipoBreakdown({ a, b }: { a: CompararDeputado; b: CompararDeputado }) {
+function TipoBreakdown({
+  a,
+  b,
+}: {
+  a: CompararDeputado;
+  b: CompararDeputado;
+}) {
   const allTipos = Array.from(
-    new Set([...Object.keys(a.proposicoes_por_tipo), ...Object.keys(b.proposicoes_por_tipo)])
+    new Set([
+      ...Object.keys(a.proposicoes_por_tipo),
+      ...Object.keys(b.proposicoes_por_tipo),
+    ]),
   ).sort((x, y) => {
-    const sum = (d: CompararDeputado, t: string) => d.proposicoes_por_tipo[t] ?? 0;
-    return (sum(b, y) + sum(a, y)) - (sum(a, x) + sum(b, x));
+    const sum = (d: CompararDeputado, t: string) =>
+      d.proposicoes_por_tipo[t] ?? 0;
+
+    return (
+      sum(b, y) +
+      sum(a, y) -
+      (sum(a, x) + sum(b, x))
+    );
   });
 
   if (allTipos.length === 0) return null;
 
-  // Contagem por tipo vem de paginar o histórico inteiro do deputado (não
-  // uma amostra) — a soma deveria sempre bater com o total. Se não bater,
-  // é sinal de falha parcial de rede numa das páginas buscadas, não de tipo
-  // raro fora de amostra (esse problema foi eliminado, não só amenizado).
-  const sumTipoA = Object.values(a.proposicoes_por_tipo).reduce((s, n) => s + n, 0);
-  const sumTipoB = Object.values(b.proposicoes_por_tipo).reduce((s, n) => s + n, 0);
+  const sumTipoA = Object.values(a.proposicoes_por_tipo).reduce(
+    (s, n) => s + n,
+    0,
+  );
+
+  const sumTipoB = Object.values(b.proposicoes_por_tipo).reduce(
+    (s, n) => s + n,
+    0,
+  );
 
   return (
     <div className="overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-sm">
       <div className="flex items-center gap-2 border-b border-slate-100 bg-slate-50 px-5 py-3">
-        <svg className="h-4 w-4 text-slate-400" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
-          <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h3.75M9 15h3.75M9 18h3.75m3 .75H18a2.25 2.25 0 0 0 2.25-2.25V6.108c0-1.135-.845-2.098-1.976-2.192a48.424 48.424 0 0 0-1.123-.08m-5.801 0c-.065.21-.1.433-.1.664 0 .414.336.75.75.75h4.5a.75.75 0 0 0 .75-.75 2.25 2.25 0 0 0-.1-.664m-5.8 0A2.251 2.251 0 0 1 13.5 2.25H15c1.012 0 1.867.668 2.15 1.586m-5.8 0c-.376.023-.75.05-1.124.08C9.095 4.01 8.25 4.973 8.25 6.108V8.25m0 0H4.875c-.621 0-1.125.504-1.125 1.125v11.25c0 .621.504 1.125 1.125 1.125h9.75c.621 0 1.125-.504 1.125-1.125V9.375c0-.621-.504-1.125-1.125-1.125H8.25Z" />
+        <svg
+          className="h-4 w-4 text-slate-400"
+          fill="none"
+          viewBox="0 0 24 24"
+          strokeWidth={2}
+          stroke="currentColor"
+        >
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            d="M9 12h3.75M9 15h3.75M9 18h3.75m3 .75H18a2.25 2.25 0 0 0 2.25-2.25V6.108c0-1.135-.845-2.098-1.976-2.192a48.424 48.424 0 0 0-1.123-.08m-5.801 0c-.065.21-.1.433-.1.664.0.414.336.75.75.75h4.5a.75.75 0 0 0 .75-.75 2.25 2.25 0 0 0-.1-.664m-5.8 0A2.251 2.251 0 0 1 13.5 2.25H15c1.012 0 1.867.668 2.15 1.586m-5.8 0c-.376.023-.75.05-1.124.08C9.095 4.01 8.25 4.973 8.25 6.108V8.25m0 0H4.875c-.621 0-1.125.504-1.125 1.125v11.25c0 .621.504 1.125 1.125 1.125h9.75c.621 0 1.125-.504 1.125-1.125V9.375c0-.621-.504-1.125-1.125-1.125H8.25Z"
+          />
         </svg>
-        <span className="text-xs font-bold uppercase tracking-widest text-slate-500">Proposições por Tipo</span>
+
+        <span className="text-xs font-bold uppercase tracking-widest text-slate-500">
+          Proposições por Tipo
+        </span>
       </div>
-      {(sumTipoA < a.proposicoes_total || sumTipoB < b.proposicoes_total) && (
+
+      {(sumTipoA < a.proposicoes_total ||
+        sumTipoB < b.proposicoes_total) && (
         <p className="border-b border-slate-100 bg-amber-50 px-5 py-2 text-[11px] leading-relaxed text-amber-700">
-          A soma das contagens por tipo abaixo ficou abaixo do total geral acima — sinal de falha parcial ao
-          carregar o histórico completo de {a.nome.split(" ")[0]} ou {b.nome.split(" ")[0]} na fonte oficial, não de
-          amostragem (o cálculo já pagina o histórico inteiro).
+          A soma das contagens por tipo abaixo ficou abaixo do total geral
+          acima — sinal de falha parcial ao carregar o histórico completo de{" "}
+          {a.nome.split(" ")[0]} ou {b.nome.split(" ")[0]} na fonte oficial,
+          não de amostragem (o cálculo já pagina o histórico inteiro).
         </p>
       )}
+
       <div className="grid grid-cols-1 gap-3 p-5 sm:grid-cols-2">
         {allTipos.slice(0, 8).map((tipo) => {
           const vA = a.proposicoes_por_tipo[tipo] ?? 0;
           const vB = b.proposicoes_por_tipo[tipo] ?? 0;
+
           return (
             <TipoRow
               key={tipo}
               tipo={tipo}
-              label={TIPO_LABEL[tipo] ?? tipo}
+              label={tipoLabel(tipo)}
               vA={vA}
               vB={vB}
             />
@@ -582,7 +817,6 @@ function ComparisonView({ result }: { result: CompararResult }) {
       transition={{ duration: 0.45 }}
       className="space-y-5"
     >
-      {/* Profile cards */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-[1fr_auto_1fr] items-start">
         <ProfileCard dep={a} color="blue" />
 
@@ -595,13 +829,22 @@ function ComparisonView({ result }: { result: CompararResult }) {
         <ProfileCard dep={b} color="violet" />
       </div>
 
-      {/* Metric cards */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
         <MetricCard
           label="Proposições Totais"
           icon={
-            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z" />
+            <svg
+              className="h-4 w-4"
+              fill="none"
+              viewBox="0 0 24 24"
+              strokeWidth={2}
+              stroke="currentColor"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z"
+              />
             </svg>
           }
           valA={a.proposicoes_total}
@@ -610,11 +853,22 @@ function ComparisonView({ result }: { result: CompararResult }) {
           nameA={nomeA}
           nameB={nomeB}
         />
+
         <MetricCard
           label="Patrimônio (TSE 2022)"
           icon={
-            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 18.75a60.07 60.07 0 0 1 15.797 2.101c.727.198 1.453-.342 1.453-1.096V18.75M3.75 4.5v.75A.75.75 0 0 1 3 6h-.75m0 0v-.375c0-.621.504-1.125 1.125-1.125H20.25M2.25 6v9m18-10.5v.75c0 .414.336.75.75.75h.75m-1.5-1.5h.375c.621 0 1.125.504 1.125 1.125v9.75c0 .621-.504 1.125-1.125 1.125h-.375m1.5-1.5H21a.75.75 0 0 0-.75.75v.75m0 0H3.75m0 0h-.375a1.125 1.125 0 0 1-1.125-1.125V15m1.5 1.5v-.75A.75.75 0 0 0 3 15h-.75M15 10.5a3 3 0 1 1-6 0 3 3 0 0 1 6 0Zm3 0h.008v.008H18V10.5Zm-12 0h.008v.008H6V10.5Z" />
+            <svg
+              className="h-4 w-4"
+              fill="none"
+              viewBox="0 0 24 24"
+              strokeWidth={2}
+              stroke="currentColor"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                d="M2.25 18.75a60.07 60.07 0 0 1 15.797 2.101c.727.198 1.453-.342 1.453-1.096V18.75M3.75 4.5v.75A.75.75 0 0 1 3 6h-.75m0 0v-.375c0-.621.504-1.125 1.125-1.125H20.25M2.25 6v9m18-10.5v.75c0 .414.336.75.75.75h.75m-1.5-1.5h.375c.621 0 1.125.504 1.125 1.125v9.75c0 .621-.504 1.125-1.125 1.125h-.375m1.5-1.5H21a.75.75 0 0 0-.75.75v.75m0 0H3.75m0 0h-.375a1.125 1.125 0 0 1-1.125-1.125V15m1.5 1.5v-.75A.75.75 0 0 0 3 15h-.75M15 10.5a3 3 0 1 1-6 0 3 3 0 0 1 6 0Zm3 0h.008v.008H18V10.5Zm-12 0h.008v.008H6V10.5Z"
+              />
             </svg>
           }
           valA={a.patrimonio_total}
@@ -622,13 +876,26 @@ function ComparisonView({ result }: { result: CompararResult }) {
           fmt={fmtBRL}
           nameA={nomeA}
           nameB={nomeB}
-          indisponivel={a.patrimonio_indisponivel || b.patrimonio_indisponivel}
+          indisponivel={
+            a.patrimonio_indisponivel || b.patrimonio_indisponivel
+          }
         />
+
         <MetricCard
           label="Gastos CEAP"
           icon={
-            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 8.25h19.5M2.25 9h19.5m-16.5 5.25h6m-6 2.25h3m-3.75 3h15a2.25 2.25 0 0 0 2.25-2.25V6.75A2.25 2.25 0 0 0 19.5 4.5h-15a2.25 2.25 0 0 0-2.25 2.25v10.5A2.25 2.25 0 0 0 4.5 19.5Z" />
+            <svg
+              className="h-4 w-4"
+              fill="none"
+              viewBox="0 0 24 24"
+              strokeWidth={2}
+              stroke="currentColor"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                d="M2.25 8.25h19.5M2.25 9h19.5m-16.5 5.25h6m-6 2.25h3m-3.75 3h15a2.25 2.25 0 0 0 2.25-2.25V6.75A2.25 2.25 0 0 0 19.5 4.5h-15a2.25 2.25 0 0 0-2.25 2.25v10.5A2.25 2.25 0 0 1 4.5 19.5Z"
+              />
             </svg>
           }
           valA={a.gastos_total}
@@ -636,23 +903,25 @@ function ComparisonView({ result }: { result: CompararResult }) {
           fmt={fmtBRL}
           nameA={nomeA}
           nameB={nomeB}
-          indisponivel={a.despesas_indisponivel || b.despesas_indisponivel}
+          indisponivel={
+            a.despesas_indisponivel || b.despesas_indisponivel
+          }
         />
       </div>
 
-      {/* Tipo breakdown */}
       <TipoBreakdown a={a} b={b} />
 
-      {/* Legend */}
       <div className="flex flex-wrap items-center gap-4 rounded-xl bg-slate-50 px-4 py-3 text-[11px] text-slate-500">
         <span className="flex items-center gap-1.5">
           <span className="h-2.5 w-2.5 rounded-full bg-blue-500" />
           {nomeA} — Deputado A
         </span>
+
         <span className="flex items-center gap-1.5">
           <span className="h-2.5 w-2.5 rounded-full bg-violet-500" />
           {nomeB} — Deputado B
         </span>
+
         <span className="ml-auto">
           Patrimônio: TSE 2022 · Gastos: CEAP · Proposições: 57ª legislatura
         </span>
@@ -673,19 +942,30 @@ export function CompararPage() {
 
   function loadAll() {
     setStatusAll("loading");
-    api.camara.deputados()
-      .then((d) => { setAll(d); setStatusAll("success"); })
+
+    api.camara
+      .deputados()
+      .then((d) => {
+        setAll(d);
+        setStatusAll("success");
+      })
       .catch((e: Error) => setStatusAll(classifyApiError(e)));
   }
+
   useEffect(loadAll, []);
 
   function loadComparacao() {
     if (!selA || !selB) return;
+
     setStatus("loading");
     setResult(null);
+
     api.comparar
       .deputados(selA.id, selB.id)
-      .then((r) => { setResult(r); setStatus("success"); })
+      .then((r) => {
+        setResult(r);
+        setStatus("success");
+      })
       .catch((e: Error) => setStatus(classifyApiError(e)));
   }
 
@@ -695,29 +975,42 @@ export function CompararPage() {
       setStatus("idle");
       return;
     }
+
     let cancelled = false;
+
     setStatus("loading");
     setResult(null);
+
     api.comparar
       .deputados(selA.id, selB.id)
-      .then((r) => { if (!cancelled) { setResult(r); setStatus("success"); } })
-      .catch((e: Error) => { if (!cancelled) setStatus(classifyApiError(e)); });
-    return () => { cancelled = true; };
+      .then((r) => {
+        if (!cancelled) {
+          setResult(r);
+          setStatus("success");
+        }
+      })
+      .catch((e: Error) => {
+        if (!cancelled) setStatus(classifyApiError(e));
+      });
+
+    return () => {
+      cancelled = true;
+    };
   }, [selA, selB]);
 
   return (
     <PageTransition direction="up">
       <main className="mx-auto max-w-4xl px-4 py-8 sm:px-6 lg:px-8">
-
-        {/* Header */}
         <div className="mb-8">
-          <h1 className="text-2xl font-extrabold text-slate-900">Comparar Políticos</h1>
+          <h1 className="text-2xl font-extrabold text-slate-900">
+            Comparar Políticos
+          </h1>
+
           <p className="mt-1 text-sm text-slate-500">
             Selecione dois deputados e compare patrimônio, proposições e gastos.
           </p>
         </div>
 
-        {/* Selectors */}
         <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-start sm:gap-6">
           <DeputadoSelector
             label="Deputado A"
@@ -748,44 +1041,64 @@ export function CompararPage() {
           />
         </div>
 
-        {/* Lista de deputados (base da busca acima) falhou ao carregar — sem
-            isso, os seletores ficavam eternamente em "carregando"/"nenhum
-            resultado", sem o usuário nunca saber que era falha de rede. */}
-        {(statusAll === "error" || statusAll === "offline" || statusAll === "rate_limited") && (
+        {(statusAll === "error" ||
+          statusAll === "offline" ||
+          statusAll === "rate_limited") && (
           <div className="mb-6">
             <OfflineBanner
               source="API da Câmara"
-              kind={statusAll === "rate_limited" ? "rate_limited" : "offline"}
+              kind={
+                statusAll === "rate_limited" ? "rate_limited" : "offline"
+              }
               onRetry={loadAll}
             />
           </div>
         )}
 
-        {/* States */}
         {status === "idle" && !selA && !selB && (
           <div className="flex flex-col items-center gap-3 py-20 text-center text-slate-400">
-            <svg className="h-12 w-12 opacity-30" fill="none" viewBox="0 0 24 24" strokeWidth={1.2} stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M18 18.72a9.094 9.094 0 0 0 3.741-.479 3 3 0 0 0-4.682-2.72m.94 3.198.001.031c0 .225-.012.447-.037.666A11.944 11.944 0 0 1 12 21c-2.17 0-4.207-.576-5.963-1.584A6.062 6.062 0 0 1 6 18.719m12 0a5.971 5.971 0 0 0-.941-3.197m0 0A5.995 5.995 0 0 0 12 12.75a5.995 5.995 0 0 0-5.058 2.772m0 0a3 3 0 0 0-4.681 2.72 8.986 8.986 0 0 0 3.74.477m.94-3.197a5.971 5.971 0 0 0-.94 3.197M15 6.75a3 3 0 1 1-6 0 3 3 0 0 1 6 0Zm6 3a2.25 2.25 0 1 1-4.5 0 2.25 2.25 0 0 1 4.5 0Zm-13.5 0a2.25 2.25 0 1 1-4.5 0 2.25 2.25 0 0 1 4.5 0Z" />
+            <svg
+              className="h-12 w-12 opacity-30"
+              fill="none"
+              viewBox="0 0 24 24"
+              strokeWidth={1.2}
+              stroke="currentColor"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                d="M18 18.72a9.094 9.094 0 0 0 3.741-.479 3 3 0 0 0-4.682-2.72m.94 3.198.001.031c0 .225-.012.447-.037.666A11.944 11.944 0 0 1 12 21c-2.17 0-4.207-.576-5.963-1.584A6.062 6.062 0 0 1 6 18.719m12 0a5.971 5.971 0 0 0-.941-3.197m0 0A5.995 5.995 0 0 0 12 12.75a5.995 5.995 0 0 0-5.058 2.772m0 0a3 3 0 0 0-4.681 2.72 8.986 8.986 0 0 0 3.74.477m.94-3.197a5.971 5.971 0 0 0-.94 3.197M15 6.75a3 3 0 1 1-6 0 3 3 0 0 1 6 0Zm6 3a2.25 2.25 0 1 1-4.5 0 2.25 2.25 0 0 1 4.5 0Zm-13.5 0a2.25 2.25 0 1 1-4.5 0 2.25 2.25 0 0 1 4.5 0Z"
+              />
             </svg>
-            <p className="text-sm font-medium">Escolha dois deputados acima para iniciar a comparação</p>
+
+            <p className="text-sm font-medium">
+              Escolha dois deputados acima para iniciar a comparação
+            </p>
           </div>
         )}
 
-        {(status === "idle" && (selA || selB)) && (
+        {status === "idle" && (selA || selB) && (
           <div className="flex flex-col items-center gap-2 py-16 text-center text-slate-400">
-            <p className="text-sm">Selecione o segundo deputado para comparar</p>
+            <p className="text-sm">
+              Selecione o segundo deputado para comparar
+            </p>
           </div>
         )}
 
         {status === "loading" && (
           <div className="space-y-4 py-4">
             {[...Array(3)].map((_, i) => (
-              <div key={i} className="h-24 animate-pulse rounded-2xl bg-slate-100" />
+              <div
+                key={i}
+                className="h-24 animate-pulse rounded-2xl bg-slate-100"
+              />
             ))}
           </div>
         )}
 
-        {(status === "error" || status === "offline" || status === "rate_limited") && (
+        {(status === "error" ||
+          status === "offline" ||
+          status === "rate_limited") && (
           <OfflineBanner
             source="API da Câmara"
             kind={status === "rate_limited" ? "rate_limited" : "offline"}
@@ -795,13 +1108,21 @@ export function CompararPage() {
 
         {status === "not_found" && (
           <div className="rounded-lg border border-slate-200 bg-slate-50 p-6 text-center">
-            <h3 className="font-semibold text-slate-700">Deputado não encontrado</h3>
-            <p className="mt-1 text-sm text-slate-500">Um dos dois IDs não existe na base atual da Câmara.</p>
+            <h3 className="font-semibold text-slate-700">
+              Deputado não encontrado
+            </h3>
+
+            <p className="mt-1 text-sm text-slate-500">
+              Um dos dois IDs não existe na base atual da Câmara.
+            </p>
           </div>
         )}
 
-        {status === "success" && result && <ComparisonView result={result} />}
+        {status === "success" && result && (
+          <ComparisonView result={result} />
+        )}
       </main>
     </PageTransition>
   );
 }
+
