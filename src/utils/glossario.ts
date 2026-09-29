@@ -62,6 +62,18 @@ ALESP: {
       "Pedido formal apresentado por parlamentar ou comissão. Pode solicitar informações, convocar autoridades, propor urgência, adiamento ou outras providências.",
   },
 
+  RCP: {
+    nome: "Requerimento de Comissão Parlamentar",
+    descricao:
+      "Requerimento apresentado no âmbito de uma comissão parlamentar para solicitar providências, informações ou outras medidas relacionadas aos trabalhos da comissão.",
+  },
+
+  REC: {
+    nome: "Recurso",
+    descricao:
+      "Recurso apresentado para contestar uma decisão ou solicitar sua revisão dentro do processo legislativo.",
+  },
+
   RIC: {
     nome: "Requerimento de Informação",
     descricao:
