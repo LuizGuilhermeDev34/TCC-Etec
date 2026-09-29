@@ -20,6 +20,12 @@ export const GLOSSARIO: Record<string, GlossarioInfo> = {
       "Proposta destinada a regulamentar matérias que a Constituição Federal reserva à lei complementar. Sua aprovação exige maioria absoluta.",
   },
 
+ALESP: {
+  nome: "Assembleia Legislativa do Estado de São Paulo",
+  descricao:
+    "Órgão do Poder Legislativo do Estado de São Paulo, formado pelos deputados estaduais.",
+},
+
   PEC: {
     nome: "Proposta de Emenda à Constituição",
     descricao:

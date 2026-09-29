@@ -57,7 +57,7 @@ export function GlossarioTooltip({
           pointer-events-none
           absolute
           bottom-full
-          left-1/2
+          left-[calc(50%+20px)]
           z-50
           mb-2
           w-72

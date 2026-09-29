@@ -1,0 +1,160 @@
+--- backend/app/services/camara_service.py
++++ backend/app/services/camara_service.py
+@@ -1,5 +1,8 @@
+ import asyncio
++import csv
++import io
+ import re
++import zipfile
+ from typing import Any, Dict, List, Optional
+ 
+ import httpx
+@@ -22,6 +25,9 @@
+ # não precisa do TTL padrão de 5 min do _cache genérico. TTL próprio evita
+ # repetir a chamada de 513 deputados a cada poucos minutos por UF pedida.
+ _cache_deputados = SimpleCache(ttl_seconds=60 * 60 * 6)
++# O CEAP é disponibilizado pela Câmara em arquivos anuais compactados.
++# Cache compartilhado evita baixar e indexar o mesmo ano para cada partido.
++_cache_ceap = SimpleCache(ttl_seconds=60 * 60 * 6)
+ # Histórico de votos de 2023 é imutável e caro de montar (varre trimestres +
+ # um /votos por votação de plenário) — TTL longo evita refazer o fan-out
+ # inteiro a cada visita de perfil.
+@@ -857,26 +863,50 @@
+     return result
+ 
+ 
+-async def _fetch_dep_despesas_totals(
+-    client: httpx.AsyncClient,
+-    dep_id: int,
+-    ano: int = 2025,
+-) -> Dict[str, float]:
++async def _load_ceap_by_deputado(ano: int) -> Dict[int, Dict[str, float]]:
++    """Baixa e indexa o CEAP anual por deputado e categoria."""
++    cache_key = f"ceap:{ano}"
++    cached = _cache_ceap.get(cache_key)
++    if cached is not None:
++        return cached
++
++    url = f"http://www.camara.leg.br/cotas/Ano-{ano}.csv.zip"
++
+     try:
+-        resp = await client.get(
+-            f"{_CAMARA_BASE}/deputados/{dep_id}/despesas",
+-            params={"ano": ano, "itens": 100},
+-            timeout=12.0,
+-        )
+-        if not resp.is_success:
+-            return {}
+-        cats: Dict[str, float] = {}
+-        for d in resp.json().get("dados", []):
+-            cat = d.get("tipoDespesa") or "Outros"
+-            val = float(d.get("valorLiquido") or 0)
+-            if val > 0:
+-                cats[cat] = cats.get(cat, 0) + val
+-        return cats
++        async with httpx.AsyncClient(timeout=120.0, follow_redirects=True) as client:
++            response = await client.get(url)
++            response.raise_for_status()
++
++        indice: Dict[int, Dict[str, float]] = {}
++
++        with zipfile.ZipFile(io.BytesIO(response.content)) as zf:
++            nome_csv = next(
++                (nome for nome in zf.namelist() if nome.lower().endswith(".csv")),
++                None,
++            )
++            if not nome_csv:
++                return {}
++
++            with zf.open(nome_csv) as raw:
++                with io.TextIOWrapper(raw, encoding="utf-8-sig", newline="") as text:
++                    leitor = csv.DictReader(text, delimiter=";")
++
++                    for row in leitor:
++                        try:
++                            deputado_id = int(row.get("ideCadastro") or 0)
++                            valor = float(row.get("vlrLiquido") or 0)
++                        except (ValueError, TypeError):
++                            continue
++
++                        if deputado_id <= 0 or valor <= 0:
++                            continue
++
++                        categoria = row.get("txtDescricao") or "Outros"
++                        por_categoria = indice.setdefault(deputado_id, {})
++                        por_categoria[categoria] = por_categoria.get(categoria, 0.0) + valor
++
++        _cache_ceap.set(cache_key, indice)
++        return indice
+     except Exception:
+         return {}
+ 
+@@ -892,37 +922,33 @@
+         return {}
+     sigla = partido["sigla"]
+ 
+-    all_dep = await get_deputados()
+-    membros = [d for d in all_dep if d.sigla_partido == sigla]
+-
+     from datetime import date
+     ano_atual = date.today().year
+ 
+-    # Try current year then previous — track which year has data
++    # A busca da composição e o download do CEAP são independentes e
++    # acontecem em paralelo no primeiro acesso.
++    all_dep_task = asyncio.create_task(get_deputados())
++    ceap_task = asyncio.create_task(_load_ceap_by_deputado(ano_atual))
++    all_dep, ceap = await asyncio.gather(all_dep_task, ceap_task)
++
++    membros_ids = {d.id for d in all_dep if d.sigla_partido == sigla}
++
++    def _agregar(indice: Dict[int, Dict[str, float]]) -> Dict[str, float]:
++        categorias: Dict[str, float] = {}
++        for dep_id in membros_ids:
++            for cat, val in indice.get(dep_id, {}).items():
++                categorias[cat] = categorias.get(cat, 0.0) + val
++        return categorias
++
++    categorias = _agregar(ceap)
+     ano_dados = ano_atual
+-    async with httpx.AsyncClient(timeout=20.0) as client:
+-        results = await asyncio.gather(
+-            *[_fetch_dep_despesas_totals(client, d.id, ano_atual) for d in membros[:60]],
+-            return_exceptions=True,
+-        )
+-
+-    categorias: Dict[str, float] = {}
+-    for res in results:
+-        if isinstance(res, dict):
+-            for cat, val in res.items():
+-                categorias[cat] = categorias.get(cat, 0) + val
+-
++
++    # Mantém o fallback do comportamento anterior quando o ano atual não
++    # possui despesas disponíveis para a bancada.
+     if not categorias:
+         ano_dados = ano_atual - 1
+-        async with httpx.AsyncClient(timeout=20.0) as client:
+-            results = await asyncio.gather(
+-                *[_fetch_dep_despesas_totals(client, d.id, ano_dados) for d in membros[:60]],
+-                return_exceptions=True,
+-            )
+-        for res in results:
+-            if isinstance(res, dict):
+-                for cat, val in res.items():
+-                    categorias[cat] = categorias.get(cat, 0) + val
++        ceap = await _load_ceap_by_deputado(ano_dados)
++        categorias = _agregar(ceap)
+ 
+     total = sum(categorias.values())
+     sorted_cats = sorted(
+@@ -935,9 +961,6 @@
+         "total": total,
+         "categorias": sorted_cats,
+         "ano": ano_dados,
+-        # Mesmo sinal de comparar.py: a Câmara está devolvendo 200 com
+-        # dados: [] pra despesas de todo mundo (verificado ao vivo) — "sem
+-        # categorias" aqui é a fonte vazia, não a bancada gastando zero.
+         "despesas_indisponivel": len(categorias) == 0,
+     }
+     _cache.set(cache_key, result)
