@@ -25,7 +25,12 @@ export function PatrimonioCard({ fetchPatrimonio, tseLink }: Props) {
     return () => { cancelled = true; };
   }, []);
 
-  const categorias = patrimonio ? Object.entries(patrimonio.categorias) : [];
+  const categorias =
+  patrimonio?.categorias &&
+  typeof patrimonio.categorias === "object" &&
+  !Array.isArray(patrimonio.categorias)
+    ? Object.entries(patrimonio.categorias)
+    : [];
 
   return (
     <div className="rounded-2xl border border-slate-200 bg-white shadow-sm p-5">
